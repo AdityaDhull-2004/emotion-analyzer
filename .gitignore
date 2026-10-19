@@ -1,0 +1,7 @@
+data/
+models/
+certs/
+.env
+.venv/
+kaggle/code/
+__pycache__/
