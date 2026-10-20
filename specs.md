@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.4 (approved for build; changes in §20) |
+| Version | 1.5 (approved for build; changes in §20) |
 | Date | 2026-10-20 |
 | Course | Applied Data Science and AI (UMC 301), project 4 |
 | Method | Spec-driven development. This file is the source of truth; every change goes through the change log (§20) |
@@ -86,7 +86,7 @@ Free only: no paid APIs, no paid hosting.
   - keep any Kaggle copy of MELD-derived data private.
 - **CREMA-D** is ODbL; attribution is required.
 - **RAVDESS** is CC BY-NC-SA 4.0: non-commercial use, with attribution.
-- Citations (§18) appear in `README.md` and in the app's About panel.
+- Citations (§18) appear in `README.md` and on the app's How it works tab.
 - Per-utterance MELD transcripts and predictions stay in the git-ignored `data/kaggle/`. The committed `results/` folder holds only aggregate tables, figures and `metrics.json`; the error analysis may quote its 10 transcripts as text, never audio.
 - The only audio committed to git is the small text-to-speech test fixtures in `tests/fixtures/` (§13), generated with Windows' built-in text-to-speech.
 
@@ -128,6 +128,7 @@ Ports 8000 (another project's app) and 8765 (another project's demo) are taken. 
 
 - `GET /` serves the web UI.
 - `GET /api/health` returns `{"status": "ok", "models_loaded": true, "version": "1.0.0"}`.
+- `GET /api/report` (read-only) returns the data for the Results tab (§5.4): the aggregate files in `results/` and the deployed fusion parameters, assembled once at start-up. A section whose files are missing is marked unavailable. It never contains per-utterance data.
 - `POST /api/analyze` takes `multipart/form-data` with one field, `audio`. A successful response looks like this:
 
 ```json
@@ -165,17 +166,53 @@ Ports 8000 (another project's app) and 8765 (another project's demo) are taken. 
 
 ### 5.4 Web UI
 
-The UI is a single page in plain HTML, CSS and JavaScript, with no external CDNs, so it works offline. It contains:
-- **Input:** a Record button (MediaRecorder) and Upload.
+The UI is a single page in plain HTML, CSS and JavaScript, with no external CDNs, so it works offline. It is built to be demonstrated live on a projector and still works at phone width. It has three tabs.
+
+**Try it**
+- **Input:**
+  - a Record button (MediaRecorder) with a live input-level meter and a timer while recording;
+  - Space starts and stops recording, except while typing in a field;
+  - Upload by button or by drag and drop.
 - **Result card:** the fused emotion with a confidence bar.
-- **Two side cards:** "How it sounds" and "What was said", each with probability bars for the 7 classes.
+- **Two side cards:** "How it sounds" and "What was said", each with animated probability bars for the 7 classes.
 - **Transcript.**
 - **Disagreement banner**, for example: "Tone and words disagree: it sounds angry, but the words read as surprised."
 - **Timeline** of segments, for recordings longer than 10 s.
 - **Processing time.**
-- **Demo samples:** only the user's own recordings, with consent. They are served from the git-ignored folder `app/static/samples/`, filled in Phase 8 from the clips listed in `data/own/demo_ok.txt`.
-- **About panel:** citations, plus the limitations ("trained on TV dialogue; not for clinical use; English only").
-- **Layout:** works at phone width.
+- **Demo samples:**
+  - only the user's own recordings, with consent, served from the git-ignored folder `app/static/samples/` (filled in Phase 8 from the clips listed in `data/own/demo_ok.txt`);
+  - each shows its true label, and every prediction on a demo clip is marked right or wrong;
+  - **Run all demos** plays the clips one by one, analyses each and ends with a scoreboard.
+- **History** of this session's analyses. It is kept in the page, not on the server; clicking an entry shows it again.
+
+**How it works**
+- An inline SVG diagram of the pipeline:
+  - audio → voice detection (Silero VAD) → the shared Whisper encoder;
+  - from the encoder, the sound head on one side, and the transcript and the text model on the other;
+  - then temperature scaling and fusion, ending in the answer.
+- The diagram shows the stage timings of the last analysis and the deployed temperatures and weight.
+- A short plain-English explanation of why two models are fused, and the citations.
+
+**Results**
+- Built from `GET /api/report` (§5.3). The server assembles it at start-up from the aggregate files in `results/`, so the page always shows the last evaluation.
+- It never contains MELD audio or per-utterance data: no transcripts, clip ids or file names.
+- It shows:
+  - the R0–R9 table with the deployed system highlighted;
+  - per-class F1 for sound, text and fused, and the three confusion matrices;
+  - WER for both windows, with the window decision;
+  - calibration: ECE before and after temperature scaling, and the reliability diagram;
+  - latency against AC-08 and memory against AC-09;
+  - the results on the user's own recordings;
+  - the chatbot comparison against Gemini, marked partial while some clips are still missing;
+  - what the system does that a chatbot cannot, backed by those numbers;
+  - the honest limitations ("trained on TV dialogue; not for clinical use; English only", plus the measured weaknesses).
+
+**Throughout**
+- One colour and one emoji per emotion, the same on every card and chart: anger 😠, disgust 🤢, fear 😨, joy 😄, neutral 😐, sadness 😢, surprise 😲.
+- Light and dark themes: the system setting by default, with a toggle.
+- Large readable text for a projector.
+- **Layout:** works at phone width without horizontal page scrolling.
+- Animations respect the reduced-motion setting.
 - **Microphone access:** browsers allow microphone recording only in a secure context (HTTPS or localhost). The local-network server therefore uses HTTPS with a self-signed certificate (§12). Upload always works.
 
 ## 6. System design
@@ -609,7 +646,7 @@ Criteria that fail are reported honestly with the measured value. They are never
 - **Smoke check:** `scripts/smoke.ps1` calls `/api/health` and `/api/analyze` through the real LAN address.
 - **Offline check:** `scripts/offline_check.ps1` sets `HF_HUB_OFFLINE=1`, starts the server, analyses a demo clip on localhost, writes `results/offline_check.txt` and stops the server. The user runs it with Wi-Fi off (§10.4c).
 - **Access log:** the app writes one line per request to the git-ignored `logs/server.log`: time, client IP, user agent, endpoint, status and processing time, plus Cloudflare's `CF-Connecting-IP` header when present. The deployment check (AC-12) reads it to confirm the phone's requests over Wi-Fi and through the tunnel.
-- **Content:** demo samples are only the user's own recordings, with consent. Citations are shown in the About panel.
+- **Content:** demo samples are only the user's own recordings, with consent. Citations are shown on the How it works tab.
 - **Documentation:** `README.md` gets a "Running in production" section, with the working directory before every command.
 
 ## 13. Repository layout and output files
@@ -632,12 +669,12 @@ emotion-analyzer/
 ├── src/emotion_analyzer/     __init__.py, config.py, data.py, speech.py, features.py, sound_model.py,
 │                             text_model.py, fusion.py, metrics.py, transcribe.py, evaluate.py,
 │                             latency.py, chatbot_compare.py
-├── app/                      main.py, static/index.html, static/app.js, static/style.css, static/samples/ (git-ignored demo clips)
+├── app/                      main.py, report.py, static/index.html, static/app.js, static/style.css, static/samples/ (git-ignored demo clips)
 ├── scripts/                  package_kaggle.py, serve.ps1, tunnel.ps1, make_cert.py, smoke.ps1, offline_check.ps1
 ├── kaggle/code/              built by package_kaggle.py (git-ignored)
 ├── models/                   sound_head.pt, sound_head.json, text_model_seed{0,1,2}/, fusion.json, decision.json (git-ignored)
 ├── data/                     meld/dev/, own/ (with demo_ok.txt), kaggle/ (git-ignored)
-├── results/                  aggregate tables (.csv/.md), figures (.png, 150 dpi), metrics.json (committed)
+├── results/                  aggregate tables (.csv/.md/.json; the .json files feed the web page), figures (.png, 150 dpi), metrics.json (committed)
 ├── logs/                     server.log, the app's access log (git-ignored)
 ├── tests/                    test_data.py, test_speech.py, test_models.py, test_fusion.py,
 │                             test_metrics.py, test_api.py, test_repo_rules.py,
@@ -776,3 +813,4 @@ emotion-analyzer/
 | 1.3 | 2026-10-20 | Record only: the Kaggle run was done as one Save & Run All commit. The user skipped the interactive S0 pass (§9.1); S0 ran inside the commit, said GO, and its `s0_check.txt` was reviewed afterwards in Phase 6 | The two-pass procedure stays the documented one; the run finished in 1.87 h with every stage done |
 | 1.3 | 2026-10-20 | §8.3: the text model is deployed in **fp32** on the CPU instead of int8 dynamic quantisation, and T_text and the fusion weight are refitted on its dev outputs (T_text 1.009, w_sound 0.75; §8.4). §4.1, §6.2 and §16 updated to match | Decided by the user after Phase 6 measured both on mains power. Int8 cost 1.3 points of dev weighted-F1 on the text branch (50.30 → 49.01), changed 15% of its labels, flattened its probabilities, and made each sentence's output depend on the other sentences in its batch (activation scales are per batch). fp32 matches Kaggle on 99.9% of dev labels and still meets AC-08 and AC-09: median 1.71 s (p90 1.76 s) per 5 s clip and 1.40 GB peak, against 1.57 s and 1.90 GB with int8 |
 | 1.4 | 2026-10-20 | §8.4: the fusion weight is chosen on the dev clips from speakers outside the six main characters (155 clips) instead of all of dev; the temperatures stay fitted on all of dev. §7.4: MELD's train/dev/test CSVs (no audio) are kept in `data/meld/meta/` for the speaker names. §16: a risk row for new recording conditions. §10.6: the own-recordings report shows the result before and after, and says the refit came after the first result | Decided by the user **after seeing the result on their own recordings**: the app was right on 36% of them while the text branch alone got 61%, because w_sound 0.75 (fitted on all of dev) let a sound branch that doesn't carry over to phone recordings outvote the text. The 28 recordings were not used to choose the new weight and stay the check, but they prompted the change, so they are no longer a blind test. Checked on dev first: only 36 dev clips (14 speakers) come from speakers never seen in train, too few to fit on (best w 0.80, unstable from 0.30 to 0.80 under resampling); and the sound head doesn't do worse on those speakers, so speaker overlap isn't the cause. On the 155 non-main-cast dev clips text is as good as sound, and the best weight is 0.50 (stable from 0.50 to 0.70 under resampling) |
+| 1.5 | 2026-10-20 | §5.4: the web page becomes presentation-grade, with three tabs. Try it adds a live level meter and timer, the Space shortcut, drag and drop, animated bars, session history, true labels and right/wrong marks on demo clips, and Run all demos with a scoreboard. How it works is an SVG pipeline with the last stage timings. Results is built from `results/` at start-up. Emotion colours and emojis everywhere, light and dark themes, projector-sized text. §5.3: one read-only endpoint, `GET /api/report`; the rest of the API is unchanged. §13: `app/report.py` and the JSON aggregates in `results/`. The citations move from the About panel to the How it works tab | Requested by the user for the live class demo. The Results tab reads the aggregates at start-up so it can't go stale, and it carries only aggregates, so no MELD audio or per-utterance data reaches the page |

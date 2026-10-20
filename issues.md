@@ -67,3 +67,18 @@ Known problems and errors, newest at the bottom of each phase.
 - MELD's train and test CSVs (no audio) were downloaded to count speakers before §7.4 allowed it; v1.4 adds them to §7.4. `data.download_meld_meta()` fetches them.
 - The laptop came off mains during the rework. A processing time measured on battery (2.19 s per own clip) was discarded, and every timing was redone on mains after the user plugged in.
 - The test `test_fit_chooses_the_weight_on_the_masked_clips_only` first assumed the unmasked weight would be above 0.5. Calibration flattens a mostly-wrong branch, so it was 0.2. The test now checks that the masked weight is lower.
+
+## P8 App
+
+- **Analyses slow down after sustained load.** After about half an hour of back-to-back analyses (headless-browser checks and curl loops), processing time rose from 1.65 s to 2.6–2.7 s per clip.
+  - Almost all of it was the Whisper encoder (1.2 s → 2.1 s).
+  - The laptop was on mains in the "Best performance" power mode, with the CPU at about 80% of its rated speed.
+  - It happened through curl with no browser open too, and with no leftover headless processes, so it's the machine's state (most likely heat), not the page.
+  - The AC-08 measurement (median 1.65 s, protocol in §10.5) stands. A hot laptop will show slower times in the live demo. Not changed.
+- Page bugs found in the browser checks, all fixed:
+  - the header's class `.top` collided with the class that marks the top probability bar, so that row took the header's styles (renamed `.site-header`);
+  - a blanket CSS `text-anchor: middle` overrode the SVG labels' own anchors, so the stage timings sat on the arrows;
+  - `calc()` can't multiply two percentages, so the bars in the results table didn't draw;
+  - passing `null` to `replaceChildren` printed "null" in the right/wrong banner.
+- Headless Chrome won't make a window narrower than about 500 px, and a 390 px iframe stalled the page's report request. Phone width was checked with DevTools device emulation instead.
+- A Bash here-document mangled `"\n"` in a Python edit script again (the chatbot JSON edit). Fixed by writing the script with the Write tool.

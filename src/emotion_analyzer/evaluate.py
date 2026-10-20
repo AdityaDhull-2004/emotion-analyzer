@@ -294,6 +294,18 @@ def parity_markdown(p, window_s):
 
 # --- Phase 7: the evaluation report (§10) -------------------------------------------------
 
+def write_json(path, obj):
+    """An aggregate file for the web page's Results tab (§5.4), with numpy values made plain."""
+    def plain(x):
+        if isinstance(x, np.ndarray):
+            return x.tolist()
+        if isinstance(x, np.generic):
+            return x.item()
+        raise TypeError(f"not JSON-serialisable: {type(x).__name__}")
+
+    Path(path).write_text(json.dumps(obj, indent=1, default=plain) + "\n", encoding="utf-8")
+
+
 ROW_NAMES = {
     "R0": "Majority baseline (always neutral)",
     "R1": "Sound only (main)",
@@ -569,6 +581,33 @@ def per_class_report(parts, out_dir):
     return "\n".join(lines)
 
 
+def per_class_json(parts):
+    """results/per_class.json: per-class scores and confusion counts for each branch."""
+    y = parts["y"]
+    branches = {}
+    for key in ("sound", "text", "fused"):
+        pred = parts[key].argmax(1)
+        branches[key] = {"per_class": metrics.per_class(y, pred), **metrics.summary(y, pred),
+                         "confusion": metrics.confusion(y, pred)}
+    return {"labels": config.LABELS, "n": int(len(y)), "branches": branches}
+
+
+def wer_rows(transcripts_dir):
+    rows = []
+    for split in ("train", "dev", "test"):
+        for w in config.WINDOWS_S:
+            f = Path(transcripts_dir) / f"wer_{split}_{w}s.json"
+            if f.exists():
+                rows.append({"split": split, "window_s": w, **json.loads(f.read_text())})
+    return rows
+
+
+def wer_json(transcripts_dir, decision):
+    """results/wer.json: corpus WER per split and window, and the window decision."""
+    return {"rows": wer_rows(transcripts_dir),
+            "decision": {k: decision[k] for k in ("case", "rule", "window_s", "wer_gap_10s_minus_30s")}}
+
+
 def wer_markdown(transcripts_dir, decision):
     lines = ["# Word error rate (§10.3, AC-02)", "",
              "faster-whisper small.en, greedy, no timestamps, float16 on Kaggle's T4s. Whisper's English "
@@ -576,13 +615,9 @@ def wer_markdown(transcripts_dir, decision):
              "are subtitles, which inflates the figures.", "",
              "| Split | Window | Clips | Ref. words | Subst. | Del. | Ins. | WER |",
              "|---|---|---:|---:|---:|---:|---:|---:|"]
-    for split in ("train", "dev", "test"):
-        for w in config.WINDOWS_S:
-            f = Path(transcripts_dir) / f"wer_{split}_{w}s.json"
-            if f.exists():
-                x = json.loads(f.read_text())
-                lines.append(f"| {split} | {w} s | {x['n']} | {x['ref_words']} | {x['substitutions']} | "
-                             f"{x['deletions']} | {x['insertions']} | **{x['wer']:.2f}%** |")
+    for x in wer_rows(transcripts_dir):
+        lines.append(f"| {x['split']} | {x['window_s']} s | {x['n']} | {x['ref_words']} | {x['substitutions']} | "
+                     f"{x['deletions']} | {x['insertions']} | **{x['wer']:.2f}%** |")
     g = decision["wer_gap_10s_minus_30s"]
     lines += ["", "## Window decision (§8.1)", "",
               f"- Phase 3 timing put the build in **case {decision['case']}**: small.en met AC-08 in both "
@@ -612,13 +647,20 @@ def calibration_report(parts, params, out_dir):
              f"Both fused rows use the deployed weight w_sound {params['w_sound']}.", "",
              "| Output | ECE before | ECE after | NLL before | NLL after | Accuracy |",
              "|---|---:|---:|---:|---:|---:|"]
+    table = []
     for name, before, after in rows:
-        lines.append(f"| {name} | {metrics.ece(before, y):.2f} | {metrics.ece(after, y):.2f} | "
-                     f"{nll(before):.3f} | {nll(after):.3f} | {metrics.accuracy(y, after.argmax(1)):.1f} |")
+        table.append({"output": name, "ece_before": metrics.ece(before, y), "ece_after": metrics.ece(after, y),
+                      "nll_before": nll(before), "nll_after": nll(after),
+                      "accuracy": metrics.accuracy(y, after.argmax(1))})
+        r = table[-1]
+        lines.append(f"| {name} | {r['ece_before']:.2f} | {r['ece_after']:.2f} | "
+                     f"{r['nll_before']:.3f} | {r['nll_after']:.3f} | {r['accuracy']:.1f} |")
+    reliability = {k: [b for b in metrics.reliability(p, y) if b["count"] >= 10]
+                   for k, p in (("before", parts["fused_uncal"]), ("after", parts["fused"]))}
     fig, ax = plt.subplots(figsize=(5.2, 5.0))
     ax.plot([0, 1], [0, 1], ls="--", color="grey", lw=1, label="perfect calibration")
     for label, p, style in (("before scaling", parts["fused_uncal"], "o-"), ("after scaling", parts["fused"], "s-")):
-        bins = [b for b in metrics.reliability(p, y) if b["count"] >= 10]
+        bins = reliability[label.split()[0]]
         ax.plot([b["confidence"] for b in bins], [b["accuracy"] for b in bins], style, ms=4,
                 label=f"{label} (ECE {metrics.ece(p, y):.1f})")
     ax.set_xlabel("confidence (top fused probability)")
@@ -634,7 +676,9 @@ def calibration_report(parts, params, out_dir):
     lines += ["", "Reliability diagram: `reliability.png` (bins with at least 10 utterances).", "",
               f"**AC-16:** fused test ECE {before:.2f} before and {after:.2f} after temperature scaling, "
               "with the reliability diagram: **reported**."]
-    return "\n".join(lines) + "\n", {"ece_before": round(before, 2), "ece_after": round(after, 2)}
+    return "\n".join(lines) + "\n", {"ece_before": round(before, 2), "ece_after": round(after, 2),
+                                     "rows": table, "reliability": reliability, "bins": config.ECE_BINS,
+                                     **{k: params[k] for k in ("t_sound", "t_text", "w_sound")}}
 
 
 def error_analysis(parts, transcripts_csv, n=10, seed=0):
@@ -676,7 +720,11 @@ def error_analysis(parts, transcripts_csv, n=10, seed=0):
         others = sorted(((row[j], j) for j in range(len(lab)) if j != c), reverse=True)[:2]
         tops = ", ".join(f"{lab[j]} {100 * v / max(row.sum(), 1):.0f}%" for v, j in others if v)
         lines.append(f"| {lab[c]} | {int(row.sum())} | {100 * row[c] / max(row.sum(), 1):.1f}% | {tops} |")
-    return "\n".join(lines) + "\n", {"flagged": int(flag.sum()), "flagged_pct": round(pct(flag), 1)}
+    return "\n".join(lines) + "\n", {"flagged": int(flag.sum()), "flagged_pct": round(pct(flag), 1),
+                                   "n": int(len(y)), "sound_right_pct": round(pct(s_lab[flag] == y[flag]), 1),
+                                   "text_right_pct": round(pct(t_lab[flag] == y[flag]), 1),
+                                   "fused_right_pct": round(pct(f_lab[flag] == y[flag]), 1),
+                                   "fused_right_other_pct": round(pct(f_lab[~flag] == y[~flag]), 1)}
 
 
 DISCUSSION_HEADING = "## Discussion"
@@ -782,6 +830,30 @@ def own_markdown(df, models, before=None, before_label=None):
     return "\n".join(lines) + "\n", sc
 
 
+def own_json(df, sc, models, before=None, before_label=None):
+    """results/own_recordings.json: aggregates only (no file names or transcripts)."""
+    heard = df[df["fused"].isin(config.LABELS)]
+    out = {"n": int(len(df)), "per_emotion": {l: int((df["label"] == l).sum()) for l in config.LABELS},
+           "scores": sc, "w_sound": models["fusion_w_sound"], "median_ms": float(df["total_ms"].median()),
+           "mean_duration_s": float(df["duration_s"].mean()),
+           "confusion_fused": metrics.confusion(heard["label"].map(config.LABEL_TO_ID),
+                                                heard["fused"].map(config.LABEL_TO_ID)),
+           "before": None}
+    if before is not None:
+        b = before.set_index("file").loc[df["file"]].reset_index()
+        out["before"] = {"label": before_label, "scores": {k: own_scores(b, k) for k in ("sound", "text", "fused")}}
+    return out
+
+
+def deployed_models_info():
+    """The deployed system's description without loading any weights (for re-rendering)."""
+    from . import sound_model, text_model
+
+    params = json.loads(config.FUSION_PATH.read_text())
+    return {"asr": f"faster-whisper {config.ASR_MODEL} {config.ASR_COMPUTE_TYPE}", "window_s": config.WINDOW_S,
+            "sound": sound_model.MODEL_NAME, "text": text_model.MODEL_NAME, "fusion_w_sound": params["w_sound"]}
+
+
 def main(argv=None):
     """python -m emotion_analyzer.evaluate {ensemble,parity,report,own} ..."""
     import argparse
@@ -798,6 +870,8 @@ def main(argv=None):
     po.add_argument("--before", default=None,
                     help="an earlier own_eval CSV of the same clips, shown next to the new result (§10.6)")
     po.add_argument("--before-label", default="the earlier system", help="what the earlier run was")
+    po.add_argument("--reuse", action="store_true",
+                    help="re-render from data/own_eval.csv without running the models (and without new timings)")
     args = ap.parse_args(argv)
 
     if args.cmd == "ensemble":
@@ -826,29 +900,42 @@ def main(argv=None):
             reference = {r["row"]: r for r in results_rows(old, t_cpu) if r["row"] in ("R7", "R8", "R9")}
         (out / "results_table.md").write_text(results_table_markdown(rows, params, gains, reference),
                                               encoding="utf-8")
+        write_json(out / "results_table.json", {
+            "rows": rows, "gains": gains, "w_sound": params["w_sound"], "weight_fit": params.get("weight_fit"),
+            "all_dev_weight_reference": params.get("all_dev_weight_reference"),
+            "reference": {k: r["weighted_f1_mean"] for k, r in reference.items()} if reference else None})
         parts = deployed_test_parts(params, t_cpu)
         (out / "per_class.md").write_text(per_class_report(parts, out), encoding="utf-8")
         decision = json.loads((config.MODELS_DIR / "decision.json").read_text())
         (out / "wer.md").write_text(wer_markdown(KAGGLE_DIR / "transcripts", decision), encoding="utf-8")
+        write_json(out / "wer.json", wer_json(KAGGLE_DIR / "transcripts", decision))
         cal_md, cal = calibration_report(parts, params, out)
         (out / "calibration.md").write_text(cal_md, encoding="utf-8")
+        write_json(out / "calibration.json", cal)
         err_md, err = error_analysis(parts, KAGGLE_DIR / "transcripts" / f"test_{config.WINDOW_S}s.csv")
         (out / "error_analysis.md").write_text(keep_discussion(out / "error_analysis.md", err_md),
                                                encoding="utf-8")
+        write_json(out / "per_class.json", {**per_class_json(parts), "disagreement": err})
         for r in rows:
             print(f"{r['row']:<3} {r['weighted_f1_mean']:6.2f} ± {r['weighted_f1_sd']:.2f}  "
                   f"[{r['ci_low']:.1f}, {r['ci_high']:.1f}]  {r['condition']}")
-        print(f"fusion gains {gains}; calibration {cal}; disagreements {err}")
+        print(f"fusion gains {gains}; calibration ECE {cal['ece_before']} -> {cal['ece_after']}; "
+              f"disagreements {err}")
         return
     if args.cmd == "own":
         manifest, skipped = data.own_manifest()
         if skipped:
             print(f"skipped (name doesn't match emotion_nn.ext): {skipped}")
-        analyzer = fusion.load_analyzer()
-        df = own_recordings_eval(analyzer, manifest, log=lambda m: print(m, flush=True))
+        if args.reuse:
+            df, models = pd.read_csv(OWN_EVAL_CSV, keep_default_na=False), deployed_models_info()
+        else:
+            analyzer = fusion.load_analyzer()
+            df = own_recordings_eval(analyzer, manifest, log=lambda m: print(m, flush=True))
+            models = analyzer.models_info()
         before = pd.read_csv(args.before, keep_default_na=False) if args.before else None
-        md, sc = own_markdown(df, analyzer.models_info(), before, args.before_label)
+        md, sc = own_markdown(df, models, before, args.before_label)
         (out / "own_recordings.md").write_text(md, encoding="utf-8")
+        write_json(out / "own_recordings.json", own_json(df, sc, models, before, args.before_label))
         print(json.dumps(sc, indent=2))
         return
 

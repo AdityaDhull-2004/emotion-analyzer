@@ -25,7 +25,7 @@ INSTRUCTION = ("Classify the speaker's emotion into exactly one of: anger, disgu
 # Tried in order until one answers; the newest Flash models first (the free API's chat models).
 MODELS = ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash")
 RAW_CSV = config.RESULTS_DIR / "chatbot_raw.csv"
-RAW_COLUMNS = ["file", "label", "answer", "parsed", "latency_s", "model", "model_version"]
+RAW_COLUMNS = ["file", "label", "answer", "parsed", "latency_s", "model", "model_version", "asked_on"]
 MIN_INTERVAL_S = 6.5  # stays under the free tier's requests-per-minute limit
 
 
@@ -129,7 +129,8 @@ def run(manifest, bot, raw_csv=RAW_CSV, log=print):
             continue
         answer, seconds, version = bot.ask(wav_bytes(r.path))
         row = pd.DataFrame([{"file": name, "label": r.label, "answer": answer, "parsed": parse_label(answer),
-                             "latency_s": round(seconds, 2), "model": bot.model, "model_version": version}])
+                             "latency_s": round(seconds, 2), "model": bot.model, "model_version": version,
+                             "asked_on": time.strftime("%Y-%m-%d")}])
         raw_csv.parent.mkdir(parents=True, exist_ok=True)
         row.to_csv(raw_csv, mode="a", header=not raw_csv.exists(), index=False)
         done = pd.concat([done, row], ignore_index=True)
@@ -154,7 +155,9 @@ def markdown(raw, ours, date, ours_before=None):
     invalid = int((df["parsed"] == "").sum())
     agree = 100 * float((df["parsed"] == df["fused"]).mean())
     model = df["model"].iloc[0]
-    before_line = []
+    if "asked_on" in df and (df["asked_on"] != "").all():
+        date = " and ".join(sorted(set(df["asked_on"])))
+    before_line, b = [], None
     if ours_before is not None:
         was = df[["file"]].merge(ours_before[["file", "fused"]], on="file", how="left")["fused"].fillna("")
         b = scores(df["label"], was)
@@ -197,7 +200,11 @@ def markdown(raw, ours, date, ours_before=None):
                      + ("" if r.parsed == r.answer.lower().strip(" .") else f" (\"{r.answer}\")") + " |")
     lines += ["", f"Bold = correct. With {len(df)} clips, one clip is {100 / len(df):.1f} accuracy points: "
               "treat the difference as indicative, and see the confidence intervals."]
-    return "\n".join(lines) + "\n", {"gemini": g, "ours": o, "model": model, "invalid": invalid}
+    return "\n".join(lines) + "\n", {
+        "gemini": g, "ours": o, "ours_before": b, "model": model, "served": versions, "date": date,
+        "invalid": invalid, "agree_pct": agree, "n_answered": int(len(df)), "n_total": int(len(ours)),
+        "partial": bool(len(df) < len(ours)),
+        "median_latency_s": {"gemini": float(df["latency_s"].median()), "ours": float(df["total_ms"].median() / 1000)}}
 
 
 def main(argv=None):
@@ -228,6 +235,8 @@ def main(argv=None):
     before = pd.read_csv(args.ours_before, keep_default_na=False) if args.ours_before else None
     md, s = markdown(raw, ours, time.strftime("%Y-%m-%d"), before)
     (config.RESULTS_DIR / "chatbot.md").write_text(md, encoding="utf-8")
+    from .evaluate import write_json
+    write_json(config.RESULTS_DIR / "chatbot.json", s)  # aggregates only, for the web page
     print(f"Gemini {s['model']}: accuracy {s['gemini']['accuracy']:.1f}, weighted-F1 "
           f"{s['gemini']['weighted_f1']:.1f}; ours: accuracy {s['ours']['accuracy']:.1f}, weighted-F1 "
           f"{s['ours']['weighted_f1']:.1f}")

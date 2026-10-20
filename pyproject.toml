@@ -13,6 +13,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so the tests can import app.main
 markers = [
     "slow: needs model weights or large data; skipped by the pre-commit hook",
 ]

@@ -279,3 +279,21 @@ All on MELD test (2,610 utterances) unless stated. The deployed system has the s
   - AC-05 now passes more clearly (R7 55.5 against R5 52.3).
   - AC-07 fused −0.46. AC-08 1.65 s. AC-16 7.91 → 5.40.
   - AC-10 is still provisional until Gemini's last clip.
+
+## P8 App (spec v1.5: the presentation-grade page)
+
+- **JSON aggregates** for the Results tab: `results_table`, `per_class`, `wer`, `calibration`, `own_recordings` and `chatbot` `.json`, next to the existing `latency.json` and `parity.json`.
+  - Regenerating them left every `.md` and `.png` in `results/` unchanged.
+  - Own recordings and the chatbot were re-rendered from their saved results: no new analysis and no API calls.
+- **`GET /api/report`** is about 13.6 KB, assembled once at start-up, field by field from a whitelist. A test plants clip ids, transcripts and file names in the inputs and checks that none reach the output.
+- **A new aggregate: the disagreement flag on MELD test.** It comes up on 352 clips (13.5%).
+  - On those clips the sound branch is right 37.5% of the time, the text branch 38.6%, and the fused answer 45.7%.
+  - On the other clips the fused answer is right 59.9% of the time, so the flag marks the shakier answers.
+- **End-to-end check in headless Chrome against the real models**, with no script errors:
+  - a demo clip, drag and drop, and a history click all render;
+  - Run all demos on the 7 demo clips: **fused 4/7, sound 2/7, words 4/7**;
+  - Space with Chrome's fake microphone shows the timer and a moving level meter (its beep tone gives "no speech");
+  - no horizontal page scroll at 390 px on any tab (the wide tables scroll inside their own boxes);
+  - light and dark themes both render.
+- **Tests:** 66 fast tests pass (4 new in `test_api.py`: the report, missing or broken files, dropped per-utterance fields, the offline page), and the slow real-model API test passes. AC-11 still passes.
+- **The user tried the app locally (2026-10-20):** recording with Space, upload, drag and drop, the demo clips, Run all demos, the history, the theme button and the Results tab all work. P8 is done (AC-11 passes).

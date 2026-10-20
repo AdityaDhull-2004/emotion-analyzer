@@ -1,0 +1,79 @@
+{
+ "rows": [
+  {
+   "split": "train",
+   "window_s": 10,
+   "wer": 40.64391440706408,
+   "substitutions": 6900,
+   "deletions": 8316,
+   "insertions": 19904,
+   "ref_words": 86409,
+   "n": 9976,
+   "empty_hypotheses": 0
+  },
+  {
+   "split": "train",
+   "window_s": 30,
+   "wer": 30.58130518811698,
+   "substitutions": 6370,
+   "deletions": 8166,
+   "insertions": 11889,
+   "ref_words": 86409,
+   "n": 9976,
+   "empty_hypotheses": 0
+  },
+  {
+   "split": "dev",
+   "window_s": 10,
+   "wer": 31.88087774294671,
+   "substitutions": 720,
+   "deletions": 756,
+   "insertions": 1575,
+   "ref_words": 9570,
+   "n": 1106,
+   "empty_hypotheses": 0
+  },
+  {
+   "split": "dev",
+   "window_s": 30,
+   "wer": 26.029258098223615,
+   "substitutions": 685,
+   "deletions": 720,
+   "insertions": 1086,
+   "ref_words": 9570,
+   "n": 1106,
+   "empty_hypotheses": 0
+  },
+  {
+   "split": "test",
+   "window_s": 10,
+   "wer": 43.684685846987485,
+   "substitutions": 1882,
+   "deletions": 1986,
+   "insertions": 6290,
+   "ref_words": 23253,
+   "n": 2610,
+   "empty_hypotheses": 0
+  },
+  {
+   "split": "test",
+   "window_s": 30,
+   "wer": 33.376338536962976,
+   "substitutions": 1742,
+   "deletions": 1990,
+   "insertions": 4029,
+   "ref_words": 23253,
+   "n": 2610,
+   "empty_hypotheses": 0
+  }
+ ],
+ "decision": {
+  "case": "a",
+  "rule": "case a: dev WER gap <= 2.0 -> 10 s, else 30 s",
+  "window_s": 30,
+  "wer_gap_10s_minus_30s": {
+   "dev": 5.85,
+   "test": 10.3
+  }
+ }
+}

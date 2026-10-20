@@ -235,7 +235,17 @@ Then the build carries straight on to the next phase.
   - a phone-width layout and no CDNs
 - [x] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Speech comes from the committed `tests/fixtures/` clips; silence, too short, too large and unsupported inputs are built in the test; no MELD audio, and no text-to-speech at run time. *(8 tests, including one slow test on the real models; all pass)*
 - [x] Start the app locally and give the user the link *(http://localhost:8443, HTTP until P9 adds the certificate)*
-- [ ] **USER** Try the app locally (record and upload) and give feedback
+- [x] *(Spec v1.5, the user's request for the class demo)* JSON aggregates for the web page in `results/`, from `evaluate report`, `evaluate own` and `chatbot_compare`. Own recordings and the chatbot are re-rendered from their saved results (`--reuse`): no new analysis and no API calls *(six new `.json` files; the `.md` and `.png` outputs are unchanged)*
+- [x] `app/report.py` and `GET /api/report` (§5.3): assembled once at start-up from `results/` and `models/fusion.json`; aggregates only; missing sections marked unavailable
+- [x] Presentation-grade page (§5.4, v1.5), plain HTML, CSS and JavaScript, no CDNs:
+  - three tabs: Try it, How it works, Results;
+  - Try it: level meter and timer while recording, Space to start and stop, drag and drop, animated bars, session history, demo clips with true labels and right/wrong marks, Run all demos with a scoreboard;
+  - How it works: the SVG pipeline with the last analysis's stage timings and the deployed T and w, plus why two models are fused;
+  - Results: R0–R9 with R9 highlighted, per-class F1, three confusion matrices, WER, calibration, latency against AC-08 and AC-09, own recordings, the chatbot comparison (partial while clips are missing), what it does that a chatbot can't, limitations;
+  - one colour and emoji per emotion everywhere, light and dark themes, projector-sized text, phone width
+- [x] `tests/test_api.py`: the report endpoint (sections, aggregates only, missing files) and no external resources in the page; the AC-11 tests still pass *(66 fast tests and the slow API test pass)*
+- [x] Restart the app with the new page and give the user the link *(http://localhost:8443)*
+- [x] **USER** Try the app locally (record and upload) and give feedback *(2026-10-20: all three tabs work: recording with Space, upload, drag and drop, the demo clips, Run all demos, the history, the theme button and the Results tab)*
 - **Done when:** AC-11 passes and the user has tried the app. AC-11: the API tests pass for a normal clip, silence, a long recording, an unsupported format, a file that is too large and one that is too short.
 
 ## P9 Deployment

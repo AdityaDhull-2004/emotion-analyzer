@@ -1,0 +1,147 @@
+{
+ "n": 28,
+ "per_emotion": {
+  "anger": 4,
+  "disgust": 4,
+  "fear": 4,
+  "joy": 4,
+  "neutral": 4,
+  "sadness": 4,
+  "surprise": 4
+ },
+ "scores": {
+  "sound": {
+   "weighted_f1": 20.4,
+   "macro_f1": 20.4,
+   "accuracy": 28.6,
+   "acc_ci": [
+    10.7,
+    46.4
+   ],
+   "n": 28
+  },
+  "text": {
+   "weighted_f1": 59.7,
+   "macro_f1": 59.7,
+   "accuracy": 60.7,
+   "acc_ci": [
+    42.9,
+    78.6
+   ],
+   "n": 28
+  },
+  "fused": {
+   "weighted_f1": 58.0,
+   "macro_f1": 58.0,
+   "accuracy": 57.1,
+   "acc_ci": [
+    39.3,
+    75.0
+   ],
+   "n": 28
+  }
+ },
+ "w_sound": 0.5,
+ "median_ms": 1682.5,
+ "mean_duration_s": 5.1475,
+ "confusion_fused": [
+  [
+   2,
+   0,
+   0,
+   0,
+   2,
+   0,
+   0
+  ],
+  [
+   0,
+   1,
+   0,
+   0,
+   1,
+   0,
+   2
+  ],
+  [
+   0,
+   0,
+   1,
+   0,
+   3,
+   0,
+   0
+  ],
+  [
+   0,
+   0,
+   0,
+   3,
+   0,
+   0,
+   1
+  ],
+  [
+   0,
+   0,
+   0,
+   0,
+   3,
+   0,
+   1
+  ],
+  [
+   0,
+   0,
+   0,
+   0,
+   2,
+   2,
+   0
+  ],
+  [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   4
+  ]
+ ],
+ "before": {
+  "label": "w_sound 0.75, chosen on all of MELD dev",
+  "scores": {
+   "sound": {
+    "weighted_f1": 20.4,
+    "macro_f1": 20.4,
+    "accuracy": 28.6,
+    "acc_ci": [
+     10.7,
+     46.4
+    ],
+    "n": 28
+   },
+   "text": {
+    "weighted_f1": 59.7,
+    "macro_f1": 59.7,
+    "accuracy": 60.7,
+    "acc_ci": [
+     42.9,
+     78.6
+    ],
+    "n": 28
+   },
+   "fused": {
+    "weighted_f1": 29.8,
+    "macro_f1": 29.8,
+    "accuracy": 35.7,
+    "acc_ci": [
+     17.9,
+     53.6
+    ],
+    "n": 28
+   }
+  }
+ }
+}
