@@ -76,3 +76,19 @@ Peak memory in that process was 1.86 GB, including loading RoBERTa in fp32 befor
   - text-model training and int8 quantisation run, and the quantised layers are `torch.ao.nn.quantized.dynamic.Linear`.
 - The transformers fallback (§9.2) runs the same pipeline through `openai/whisper-*`: features from faster-whisper's extractor and the encoder layers run directly, so the 10 s window works. Tested with tiny.en on CPU, where both windows return the right transcript and 249 frames. S3 and S5 pass it with `--backend hf`.
 - Transcripts now carry the manifest `id`, so the text and sound predictions join on the same key (`fusion.align` checks that the labels agree).
+
+## P5 Kaggle package
+
+- `scripts/package_kaggle.py` builds `kaggle/code/`:
+  - the dataset tree, plus `emotion-analyzer-code.zip` (36 kB, 12 modules, `requirements-kaggle.txt`, `CODE_VERSION.json` with the git commit);
+  - `emotion-analyzer-train.ipynb`;
+  - the cells as plain files.
+
+  The cells come from `KAGGLE.md`, so the notebook and the document can't drift apart.
+- **Local dry run** (`package_kaggle.py --dry-run`, laptop CPU): cells C and S0–S8 run in one Python process, as in a notebook kernel. The settings were 12 clips per split, 2 seeds, 3 sound epochs and 1 text epoch, with stand-ins for the acted corpora (RAVDESS with its duplicated tree).
+  - **Pass 1:** 410 s. S0 took 147 s: it downloaded and extracted 32 dev clips, ran the subprocess transcription test in both windows, timed features and benchmarked training.
+  - S3 transcribed in two parts and merged them. S4 chose a window. S5 built 7 feature sets. S6 ran 6 sound runs and S7 ran 4 text runs. S8 wrote `metrics.json`, the final results block and `emotion_outputs.zip`: 106 files, 0.50 GB with 2 text seeds, so about 0.75 GB with 3.
+  - **Pass 2, resumed:** 172 s. A fresh session had the first output attached as an input. All 14 finished stages were reused (S3 ×3, S4, S6 ×6, S7 ×4) and S5 was skipped, since no sound run was left. S8 exported again.
+  - `/kaggle/working` after pass 1 was 0.97 GB with 2 text seeds, so about 1.5 GB with 3, inside the 2 GB target (§9.5).
+- **Memory:** a batch of 32 full 30 s windows doesn't fit the laptop's free RAM and dies silently. The cells use `BATCH = 16` on Kaggle (fp16, 15 GB T4) and 4 in the dry run.
+- **GPU-hours:** about 3.2 GPU-hours and 2 h wall-clock (§9.4, stated in `KAGGLE.md`). S0 re-measures on the T4s and prints a go/check verdict against the 6 GPU-hour budget and the 11 h guard. On the laptop CPU it estimates about 18 GPU-hours and reads CHECK, as expected.

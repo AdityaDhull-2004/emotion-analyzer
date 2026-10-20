@@ -1,0 +1,19 @@
+# Extras installed by cell S0 on Kaggle (spec §9.2). The image already has PyTorch,
+# scikit-learn and pandas, and S0 logs their versions. transformers and its companions
+# are pinned to the versions used locally, so the text model saved on Kaggle loads
+# unchanged on the laptop.
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+av==18.1.0
+jiwer==4.0.0
+ftfy==6.3.1
+soundfile==0.14.0
+huggingface_hub==2.2.0
+transformers==5.20.2
+tokenizers==0.23.3
+safetensors==0.8.0
+# cuBLAS for CUDA 12 and cuDNN 9 for CTranslate2 on the GPU (§9.2). If the image's
+# PyTorch already ships matching versions, these are satisfied and left alone. S0 puts
+# their lib folders on LD_LIBRARY_PATH for the GPU subprocesses.
+nvidia-cublas-cu12==12.*
+nvidia-cudnn-cu12==9.*

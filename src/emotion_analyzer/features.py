@@ -99,7 +99,7 @@ def main(argv=None):
     t0 = time.perf_counter()
     index = extract(manifest, pipe, args.window, out, args.shard_size)
     print(f"features: {len(index)} clips, {int(index['length'].sum()) if len(index) else 0} frames, "
-          f"{time.perf_counter() - t0:.0f} s -> {out}")
+          f"{time.perf_counter() - t0:.1f} s -> {out}")
 
 
 if __name__ == "__main__":

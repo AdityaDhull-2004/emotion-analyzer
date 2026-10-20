@@ -63,3 +63,38 @@ def test_wer_uses_whisper_normaliser():
     out = metrics.wer(["Hello, Mr. Smith! It's 10 o'clock."], ["hello mister smith it is ten o'clock"])
     assert out["wer"] < 30
     assert metrics.wer(["a b c d"], ["a b x d e"])["wer"] == pytest.approx(50.0)
+
+
+def test_run_summary_and_final_block(tmp_path):
+    """S8's metrics.json rows (seed means of R1-R6, R0) and the final results block."""
+    from emotion_analyzer import evaluate
+    from emotion_analyzer.sound_model import save_predictions
+
+    rng = np.random.default_rng(0)
+    ids = {sp: np.array([f"{sp}_dia{i}_utt0" for i in range(80)]) for sp in ("dev", "test")}
+    labels = {sp: rng.integers(0, 7, 80) for sp in ("dev", "test")}
+
+    def probs(y, acc):
+        pred = np.where(rng.random(len(y)) < acc, y, rng.integers(0, 7, len(y)))
+        p = np.full((len(y), 7), 0.05)
+        p[np.arange(len(y)), pred] = 0.7
+        return p
+
+    for seed in (0, 1):
+        for sp in ("dev", "test"):
+            d = tmp_path / "runs" / "sound" / f"main_seed{seed}"
+            d.mkdir(parents=True, exist_ok=True)
+            save_predictions(d / f"pred_{sp}.npz", ids[sp], labels[sp], probs(labels[sp], 0.4))
+            d = tmp_path / "runs" / "text" / f"main_seed{seed}"
+            d.mkdir(parents=True, exist_ok=True)
+            for kind, acc in (("real", 0.7), ("whisper", 0.6)):
+                save_predictions(d / f"pred_{sp}_{kind}.npz", ids[sp], labels[sp], probs(labels[sp], acc))
+    s = evaluate.summarize_runs(tmp_path / "runs")
+    rows = s["rows"]
+    assert rows["R1/test"]["n_seeds"] == 2 and rows["R4/test"]["weighted_f1_mean"] > rows["R1/test"]["weighted_f1_mean"]
+    assert "R2/test" not in rows and "R0/test" in rows
+    pf = evaluate.provisional_fusion(tmp_path / "runs")
+    assert len(pf["per_seed"]) == 2
+    block = evaluate.final_block({"decision": {"window_s": 10, "case": "a"}, "runs": s,
+                                  "provisional_fusion": pf, "wer": {}, "skipped": ["S6_A_seed0"]})
+    assert "R1 sound main" in block and "R7 fused Whisper" in block and "skipped" in block

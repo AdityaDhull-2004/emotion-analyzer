@@ -24,3 +24,9 @@ Known problems and errors, newest at the bottom of each phase.
 ## P4 Training code
 
 - In smoke runs, the temperature fit hits its upper bound (T = 20) when the text model is near-constant. This only happens with tiny settings. On Kaggle, a T at either bound would point to a training problem and should be checked in P6.
+
+## P5 Kaggle package
+
+- A batch of 32 full 30 s windows on the laptop CPU uses more memory than is free (attention scores alone are about 3.4 GB). The process dies silently with exit code 127 and an empty log. The cells now use `BATCH = 16` on Kaggle (fp16 on a 15 GB T4) and 4 in the dry run. The error messages say that an empty log usually means out of memory.
+- In the dry run, train and test are copies of the same dev clips, so the three splits show the same WER. That is expected; the rehearsal checks the plumbing, not the numbers.
+- On the laptop CPU, S0's re-estimate is about 18 GPU-hours and the verdict reads CHECK. Only Kaggle's T4 numbers count for the go-ahead.

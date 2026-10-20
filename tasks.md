@@ -137,9 +137,9 @@ Then the build carries straight on to the next phase.
 
 ## P5 Kaggle package
 
-- [ ] `requirements-kaggle.txt`: pinned `faster-whisper` and `ctranslate2`, `jiwer`, `ftfy`, `huggingface_hub`, `soundfile`, plus the cuBLAS/cuDNN fix from §9.2
-- [ ] `scripts/package_kaggle.py` → `kaggle/code/`
-- [ ] `KAGGLE.md`, covering:
+- [x] `requirements-kaggle.txt`: pinned `faster-whisper` and `ctranslate2`, `jiwer`, `ftfy`, `huggingface_hub`, `soundfile`, plus the cuBLAS/cuDNN fix from §9.2
+- [x] `scripts/package_kaggle.py` → `kaggle/code/`
+- [x] `KAGGLE.md`, covering:
   - inputs and settings;
   - the two passes (S0 interactive, then Save & Run All);
   - one config cell at the top, including the P3 window case;
@@ -150,8 +150,8 @@ Then the build carries straight on to the next phase.
   - the 11 h guard; both T4s; S7 exporting all three seeds;
   - the final results block;
   - downloading to `C:\Users\adity\Downloads`, with the Kaggle CLI as a fallback
-- [ ] Local dry-run of the S0–S8 sequence on a tiny subset, on CPU → `insights.md`
-- [ ] GPU-hours estimate stated in `KAGGLE.md` (§9.4: about 3.2 GPU-hours, about 2 h wall-clock)
+- [x] Local dry-run of the S0–S8 sequence on a tiny subset, on CPU → `insights.md`
+- [x] GPU-hours estimate stated in `KAGGLE.md` (§9.4: about 3.2 GPU-hours, about 2 h wall-clock)
 - **Done when:** the dry-run passes and the GPU-hours estimate is stated.
 
 ## Kaggle run (between P5 and P6)
