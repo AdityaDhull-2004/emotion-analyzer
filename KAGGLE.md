@@ -1,9 +1,23 @@
 # Training on Kaggle
 
-This is how the models are trained (spec §9). Everything runs in one Kaggle notebook, `emotion-analyzer-train`, on two T4 GPUs, in **two passes**:
+How the models are trained (spec §9). Everything runs in one private Kaggle notebook, `emotion-analyzer-train`, on two T4 GPUs. The notebook has **10 cells, numbered 1 to 10**. Each cell's heading also names its pipeline stage (S0–S8), the names used in the spec, the logs and the progress messages.
 
-1. **Pass 1, interactive, about 10 minutes:** run cells C and S0 only, then download `s0_check.txt`.
-2. **Pass 2, a background commit, about 2 hours:** Save Version → Save & Run All (Commit). Kaggle runs every cell unattended in a clean session and saves `/kaggle/working` as the version's output, including `emotion_outputs.zip`.
+| Cell | Stage | What it does |
+|---:|---|---|
+| 1 | settings | Settings and helper functions |
+| 2 | S0 | Environment check, installs, quick benchmark; writes `s0_check.txt` |
+| 3 | S1 | Downloads MELD's audio from Hugging Face |
+| 4 | S2 | Builds the data tables (manifests) for MELD, CREMA-D and RAVDESS |
+| 5 | S3 | Transcribes every MELD clip in both Whisper windows |
+| 6 | S4 | Chooses the window |
+| 7 | S5 | Extracts the sound features |
+| 8 | S6 | Trains the sound models |
+| 9 | S7 | Trains the text models |
+| 10 | S8 | Exports everything into `emotion_outputs.zip` |
+
+The run has **two passes**:
+- **Pass 1, interactive, about 10 minutes:** cells 1 and 2 only.
+- **Pass 2, a background commit, about 2 hours:** all 10 cells, unattended.
 
 **Budget:** about 3.2 GPU-hours and 2 h wall-clock (table below). The cap is 6 GPU-hours, well inside the 12-hour limit for a commit and the weekly quota. S0 re-measures these numbers on the real hardware.
 
@@ -19,84 +33,78 @@ This is how the models are trained (spec §9). Everything runs in one Kaggle not
 | S8 | export and zip | 0.15 | 3 min |
 | **Total** | | **≈3.2** | **≈2 h** |
 
-## 1. Before the first run (once)
+## 1. Steps in order
 
-- Your Kaggle account must be **phone-verified**: GPUs and Internet access need it.
-- Build the upload on the laptop:
+**Getting ready, once:**
 
-  ```
-  E:\AIDS\Project\emotion-analyzer
-  .venv\Scripts\python.exe scripts\package_kaggle.py
-  ```
+1. **Phone-verify your Kaggle account.** On kaggle.com, go to **Settings → Phone verification**. GPUs and Internet access need it.
+2. **Build the upload on the laptop.** This is already done after the last code change; run it again only if the code changes:
 
-  This writes `kaggle\code\` (git-ignored):
-  - `emotion-analyzer-code.zip` is the code dataset.
-  - `emotion-analyzer-train.ipynb` holds the cells below as a notebook.
-  - `cells\` holds the same cells as plain files.
+   ```
+   E:\AIDS\Project\emotion-analyzer
+   .venv\Scripts\python.exe scripts\package_kaggle.py
+   ```
 
-## 2. Upload the code as a dataset
+   It writes `kaggle\code\` (git-ignored):
+   - `emotion-analyzer-code.zip`, the code dataset;
+   - `emotion-analyzer-train.ipynb`, the 10 cells as a notebook;
+   - `cells\1.py` … `cells\10.py`, the same cells as plain files.
 
-1. kaggle.com → **Create** → **New Dataset**.
-2. Drop in `kaggle\code\emotion-analyzer-code.zip` (Kaggle unpacks it).
-3. Title it **emotion-analyzer-code** and leave it **Private** → **Create**.
+**Setting up the notebook:**
 
-The dataset holds `emotion_analyzer/`, `requirements-kaggle.txt` and `CODE_VERSION.json`, which records the git commit it was built from. After a code change, rebuild the package and choose **New Version** on the dataset.
-
-## 3. Create the notebook
-
-1. **Create** → **New Notebook**, named **emotion-analyzer-train** and kept **Private**.
-2. Get the cells in, either way:
-   - **File** → **Import Notebook** → `kaggle\code\emotion-analyzer-train.ipynb`; or
-   - paste cells C and S0–S8 from section 7, one Kaggle cell each, in order.
-3. Right-hand panel → **Add Input**, and add these three:
-   - your dataset `emotion-analyzer-code`;
+3. **Upload the code as a dataset.** kaggle.com → **Create** → **New Dataset**. Drop in `E:\AIDS\Project\emotion-analyzer\kaggle\code\emotion-analyzer-code.zip` (Kaggle unpacks it). Title it **emotion-analyzer-code**, leave it **Private**, and choose **Create**. After a code change, upload a **New Version** of this dataset instead.
+4. **Create the notebook.** **Create** → **New Notebook**. Rename it **emotion-analyzer-train**, and keep it **Private**.
+5. **Import the cells.** **File** → **Import Notebook** → choose `E:\AIDS\Project\emotion-analyzer\kaggle\code\emotion-analyzer-train.ipynb`. You get cells 1–10, each under its heading. Alternatively, paste cells 1–10 from section 4 below, one Kaggle cell each, in order.
+6. **Add the three inputs.** In the right-hand panel, choose **Add Input** and add:
+   - `emotion-analyzer-code` (under **Your Datasets**);
    - `ejlok1/cremad`;
    - `uwrfkaggler/ravdess-emotional-speech-audio`.
-4. **Settings:**
-   - Accelerator: **GPU T4 ×2**.
-   - Internet: **On**.
-   - Persistence: none needed.
+7. **Settings.** In the right-hand panel, set **Accelerator → GPU T4 ×2** and **Internet → On**. Persistence isn't needed.
 
-## 4. Pass 1: the interactive S0 check
+**Pass 1, the interactive check (about 10 minutes):**
 
-1. Run cell **C**, then cell **S0**. S0 takes about 6–8 minutes: it installs packages, downloads 32 MELD dev clips, transcribes them on the GPU in a subprocess, extracts features and benchmarks training.
-2. In the right-hand panel, open **Output** (`/kaggle/working`), download **`s0_check.txt`** into `C:\Users\adity\Downloads`, and say so in the session. Claude checks three things:
-   - the CUDA subprocess test passed;
-   - there's enough free disk;
-   - the re-estimated total fits the budget.
-3. Leave the notebook. Don't run S1–S8 interactively: an interactive session stops after about 60 minutes idle.
+8. **Run cell 1.** It takes seconds. Expected output: one line, `[C  0.0 min] code /kaggle/input/…/emotion-analyzer-code; 2 GPU(s), device cuda; work /kaggle/working; dry_run=False`.
+9. **Run cell 2** (stage S0). It takes about 6–8 minutes: it installs the packages, downloads 32 MELD dev clips, transcribes them on the GPU in a subprocess, extracts features and benchmarks training. It prints a report ending with `verdict: GO`, and saves it as `s0_check.txt`.
 
-What `s0_check.txt` looks like (numbers will differ):
+   What `s0_check.txt` looks like (your numbers will differ):
+   
+   ```
+   S0 check 2026-10-21 09:12 | code 1.0.0 (abc1234) | Python 3.11.11 | dry_run=False
+   GPUs: 0, Tesla T4, 15360 MiB, 550.90.07 | 1, Tesla T4, 15360 MiB, 550.90.07
+   RAM 32 GB | free disk: /kaggle/working 19 GB, /tmp 60 GB
+   preinstalled: torch 2.x, transformers 4.x, scikit-learn 1.x, pandas 2.x, numpy 1.x
+   installed: faster-whisper 1.2.1, ctranslate2 4.8.3, transformers 5.20.2, ...
+   LD_LIBRARY_PATH for the GPU subprocesses: 2+ nvidia lib folders (cublas, cudnn, ...)
+   MELD sample: 32 dev clips downloaded and extracted in 9 s
+   CUDA subprocess test: OK, backend ct2 on GPU
+   measured: transcribe 0.080 / 0.150 s per clip (10 s / 30 s window); features 0.030 / 0.040 s per clip; sound step 0.015 s; text step 0.120 s
+   re-estimate (GPU-hours / wall-clock hours on 2 GPUs):
+     S3         0.88 /  0.44
+     ...
+     total      3.1  /  1.9   (budget 6 GPU-hours, commit limit 12 h, guard 11 h)
+   verdict: GO
+   ```
 
-```
-S0 check 2026-10-21 09:12 | code 1.0.0 (abc1234) | Python 3.11.11 | dry_run=False
-GPUs: 0, Tesla T4, 15360 MiB, 550.90.07 | 1, Tesla T4, 15360 MiB, 550.90.07
-RAM 32 GB | free disk: /kaggle/working 19 GB, /tmp 60 GB
-preinstalled: torch 2.x, transformers 4.x, scikit-learn 1.x, pandas 2.x, numpy 1.x
-installed: faster-whisper 1.2.1, ctranslate2 4.8.3, transformers 5.20.2, ...
-LD_LIBRARY_PATH for the GPU subprocesses: 2+ nvidia lib folders (cublas, cudnn, ...)
-MELD sample: 32 dev clips downloaded and extracted in 9 s
-CUDA subprocess test: OK, backend ct2 on GPU
-measured: transcribe 0.080 / 0.150 s per clip (10 s / 30 s window); features 0.030 / 0.040 s per clip; sound step 0.015 s; text step 0.120 s
-re-estimate (GPU-hours / wall-clock hours on 2 GPUs):
-  S3         0.88 /  0.44
-  ...
-  total      3.1  /  1.9   (budget 6 GPU-hours, commit limit 12 h, guard 11 h)
-verdict: GO
-```
+   **If the CUDA test fails:** S0 tries the transformers fallback by itself (same weights, §9.2) and reports `backend hf`. The run then continues with the fallback, and the Phase 6 parity check covers the change of implementation. If both backends fail, S0 stops with an error naming the log file under `/kaggle/working/logs/`.
+10. **Download the report.** In the right-hand panel, open **Output** (`/kaggle/working`) and download **`s0_check.txt`** into `C:\Users\adity\Downloads`. Then say so in the session. Claude checks that the CUDA subprocess test passed, that there's enough free disk, and that the re-estimated total fits the budget. **Wait for the go-ahead.**
+11. **Don't run cells 3–10 in the editor.** An interactive session stops after about 60 minutes idle, and the full run takes about 2 hours.
 
-**If the CUDA test fails:** S0 tries the transformers fallback by itself (same weights, §9.2) and reports `backend hf`. The run then continues with the fallback, and the Phase 6 parity check covers the change of implementation. If both backends fail, S0 stops with an error naming the log file under `/kaggle/working/logs/`.
+**Pass 2, the background commit (about 2 hours):**
 
-## 5. Pass 2: Save & Run All (Commit)
+12. **Commit.** Top right → **Save Version** → **Save & Run All (Commit)** → **Save**. Kaggle starts a clean session and runs cells 1–10 from top to bottom. You can close the browser; a commit has no idle timeout.
+13. **Watch progress (optional).** Use **View Active Events**, or open the running version's log. Every stage prints one-line status messages such as `[S3  41.2 min] dev: WER ...`; long subprocess logs go to `/kaggle/working/logs/`. Cell 10 ends with the **final results block**, which is also saved as `logs/final_results.txt` inside the zip.
+14. **Download the results.** When the version has finished, open it (**View Versions** → the commit) → **Output**, and download **`emotion_outputs.zip`** (about 0.8 GB) into `C:\Users\adity\Downloads`. Then say so in the session. Phase 6 moves it into the git-ignored `data/kaggle/`. If the browser download fails, use the Kaggle CLI, with your API token in `%USERPROFILE%\.kaggle\kaggle.json`:
 
-1. Top right → **Save Version** → **Save & Run All (Commit)** → **Save**.
-2. You can close the browser. Kaggle runs every cell top to bottom; there is no idle timeout.
-3. Follow progress under **View Active Events**, or the version's log. Every stage prints one-line status messages, `[S3  41.2 min] dev: WER ...`, and long subprocess logs go to `/kaggle/working/logs/`.
-4. The last cell prints the **final results block**, also saved as `logs/final_results.txt` inside the zip.
+    ```
+    C:\Users\adity\Downloads
+    kaggle kernels output <your-username>/emotion-analyzer-train -p C:\Users\adity\Downloads
+    ```
 
-**Safety:** no new training run starts after 11 hours (`GUARD_HOURS`), so the commit ends before Kaggle's 12-hour limit. Runs that were skipped or failed are listed in the final block, under `skipped`.
+**Safety:** no new training run starts after 11 hours (`GUARD_HOURS` in cell 1), so the commit ends before Kaggle's 12-hour limit. Runs that were skipped or failed are listed in the final results block, under `skipped`.
 
-## 6. If the run fails part-way: resume
+## 2. If something goes wrong
+
+**The commit fails part-way: resume.**
 
 Every stage writes a marker into `/kaggle/working/state/`:
 - `S3_{split}.done` and `S4.done`;
@@ -105,7 +113,7 @@ Every stage writes a marker into `/kaggle/working/state/`:
 At start-up, a stage looks for its marker both in `/kaggle/working/state/` and in the `state/` folder of **any** attached input (§9.3, F8). It copies the finished results from there and skips the work.
 
 To resume:
-1. Fix the cause if it's in the code: rebuild the package and add a **New Version** of the dataset.
+1. Fix the cause if it's in the code: rebuild the package (step 2) and upload a **New Version** of the dataset (step 3).
 2. In the notebook editor: **Add Input** → **Notebooks** → `emotion-analyzer-train`, and pick the failed version. Its output mounts under `/kaggle/input/<name>/`, and the code searches every input, whatever the folder is called.
 3. **Save & Run All (Commit)** again. Finished transcripts and training runs are reused.
    - Features (S5) are recomputed, because they live in `/tmp` and are cheap.
@@ -115,16 +123,27 @@ To resume:
 
 **MELD fallback:** if S1 can't download from Hugging Face, it stops with a message. Then attach the Kaggle dataset `ngocson2002/meld-datasetv2` with Add Input and commit again; S1 links the audio from there.
 
-## 7. The cells
+**A cell's log is empty, or a subprocess dies silently:** that usually means it ran out of memory. Lower `BATCH` in cell 1's settings, then commit again; the finished stages are reused.
 
-Each cell is complete. Paste them in this order, one Kaggle cell each. Only the settings block at the top of cell C is meant to be edited.
+## 3. What the zip holds
 
-### Cell C — settings and helpers
+From §9.5:
+- `models/`: `sound_head.pt` and `sound_head.json` (the main seed with the best dev weighted-F1), `text_model_seed{0,1,2}/` (fp16 safetensors plus the tokenizer), and `decision.json`.
+- `predictions/`: dev and test probabilities for every run, named `{sound|text}_{run}_seed{k}_{split}[_{real|whisper}].npz`.
+- `transcripts/`: per-utterance transcripts, WER and `decision.json`. These stay out of git (F3).
+- `metrics.json`.
+- `logs/`: `final_results.txt`, `s0_check.txt`, `class_tables.csv`, the training histories and every subprocess log.
+
+## 4. The cells
+
+Each cell is complete. They are numbered in the order they run. Only the settings block at the top of cell 1 is meant to be edited.
+
+### Cell 1 — settings and helpers
 
 Runs in seconds. **Expected output:** one line, `[C  0.0 min] code /kaggle/input/emotion-analyzer-code; 2 GPU(s), device cuda; work /kaggle/working; dry_run=False`.
 
 ```python
-# Cell C - settings and helpers (spec §9). Edit only the settings block.
+# Cell 1 - settings and helpers (spec §9). Edit only the settings block.
 import glob, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
@@ -165,7 +184,7 @@ def find(pattern, root=INPUT, depth=4):
 
 _req = find("requirements-kaggle.txt")
 if _req is None:
-    raise SystemExit("The code is missing: add the dataset emotion-analyzer-code as an input (KAGGLE.md, step 3).")
+    raise SystemExit("The code is missing: add the dataset emotion-analyzer-code as an input (KAGGLE.md, step 6).")
 CODE = _req.parent
 sys.path.insert(0, str(CODE))
 os.environ["EA_ROOT"] = str(WORK)      # config.py's writable paths point at /kaggle/working
@@ -290,12 +309,12 @@ def run_queue(jobs, stage):
 status("C", f"code {CODE}; {GPUS} GPU(s), device {DEVICE}; work {WORK}; dry_run={DRY_RUN}")
 ```
 
-### Cell S0 — environment check, installs and quick benchmark
+### Cell 2 — stage S0: environment check, installs and quick benchmark
 
-About 6–8 minutes, 0.2 GPU-hours. **Expected output:** the report shown in section 4, ending with `verdict: GO` and `[S0 ...] report saved to /kaggle/working/s0_check.txt`.
+About 6–8 minutes, 0.2 GPU-hours. **Expected output:** the report shown in step 9, ending with `verdict: GO` and `[S0 ...] report saved to /kaggle/working/s0_check.txt`.
 
 ```python
-# Cell S0 - environment check, installs and quick benchmark (spec §9.1, §9.2).
+# Cell 2 (stage S0) - environment check, installs and quick benchmark (spec §9.1, §9.2).
 import importlib.metadata as md
 import platform
 import site
@@ -405,7 +424,7 @@ for w in (10, 30):
                    "--backend", BACKEND, "--batch-size", BATCH], f"S0_features_{w}.log")
     if rc:
         raise RuntimeError(f"S0: feature extraction failed; see /kaggle/working/logs/S0_features_{w}.log "
-                           "(an empty log usually means out of memory: lower BATCH in cell C)")
+                           "(an empty log usually means out of memory: lower BATCH in cell 1)")
     m = re.search(r"features: (\d+) clips, \d+ frames, ([\d.]+) s", (WORK / "logs" / f"S0_features_{w}.log").read_text())
     feat[w] = float(m.group(2)) / int(m.group(1))
 
@@ -447,12 +466,12 @@ say(f"verdict: {'GO' if total_g <= 6 and total_w < GUARD_HOURS else 'CHECK - ove
 status("S0", "report saved to /kaggle/working/s0_check.txt (download it from the Output panel)")
 ```
 
-### Cell S1 — download MELD
+### Cell 3 — stage S1: download MELD
 
 About 3–5 minutes. **Expected output:** `[S1 ...] train: 9989 clips in 150 s`, then the same for dev and test, then `MELD ready from huggingface ajyy/MELD_audio`. The counts are archive files; the CSV join in S2 gives 9,988 / 1,108 / 2,610.
 
 ```python
-# Cell S1 - MELD audio and CSVs into /tmp/meld (spec §7.1).
+# Cell 3 (stage S1) - MELD audio and CSVs into /tmp/meld (spec §7.1).
 import tarfile
 
 
@@ -517,12 +536,12 @@ else:
     status("S1", f"MELD ready from {source}")
 ```
 
-### Cell S2 — manifests and class tables
+### Cell 4 — stage S2: manifests and class tables
 
 About 3–5 minutes, most of it resampling RAVDESS. **Expected output:** a class table with columns `meld_train`, `meld_dev`, `meld_test`, `cremad` and `ravdess`. The totals are 9,988 / 1,106 / 2,610 / 7,442 / 1,440, minus any clip that is too short or unreadable. Then `[S2 ...] manifests written; N clips dropped`. The count assertion (AC-01) raises an error if a MELD join count is wrong.
 
 ```python
-# Cell S2 - manifests and class tables (spec §7).
+# Cell 4 (stage S2) - manifests and class tables (spec §7).
 import pandas as pd
 from emotion_analyzer import data
 
@@ -558,12 +577,12 @@ print(table.to_string())
 status("S2", f"manifests written; {len(notes)} clips dropped or absent (logs/S2_dropped.txt)")
 ```
 
-### Cell S3 — transcripts in both windows
+### Cell 5 — stage S3: transcripts in both windows
 
 About 26 minutes on two GPUs, 0.9 GPU-hours. **Expected output:** one line per split, for example `[S3 ...] train: WER 27.1% (10 s window), 24.3% (30 s) in 18 min`. Expect roughly 20–35% (§8.1). Detailed logs: `logs/S3_{split}.part{0,1}.log`.
 
 ```python
-# Cell S3 - transcripts of every MELD split in both windows, on both GPUs (spec §8.1).
+# Cell 5 (stage S3) - transcripts of every MELD split in both windows, on both GPUs (spec §8.1).
 for split in SPLITS:
     name = f"S3_{split}"
     if restore(name, "transcripts"):
@@ -585,14 +604,14 @@ for split in SPLITS:
     status("S3", f"{split}: WER {wer[10]:.1f}% (10 s window), {wer[30]:.1f}% (30 s) in {(time.time() - t) / 60:.0f} min")
 ```
 
-### Cell S4 — window decision
+### Cell 6 — stage S4: window decision
 
 Seconds. **Expected output:** `[S4 ...] window 10 s (case a: dev WER gap <= 2.0 -> 10 s, else 30 s); WER gap 10 s - 30 s: {'dev': ..., 'test': ...}`.
 
 In case (b), the window stays at 10 s and the gaps are recorded as the WER cost (§8.1).
 
 ```python
-# Cell S4 - window decision by the rule in spec §8.1; writes decision.json.
+# Cell 6 (stage S4) - window decision by the rule in spec §8.1; writes decision.json.
 if not restore("S4", "transcripts/decision.json"):
     run_module(["emotion_analyzer.transcribe", "--decide", "--case", WINDOW_CASE, "--out", WORK / "transcripts"],
                "S4.log")
@@ -604,12 +623,12 @@ shutil.copy2(WORK / "transcripts" / "decision.json", WORK / "models" / "decision
 status("S4", f"window {W} s ({DECISION['rule']}); WER gap 10 s - 30 s: {DECISION['wer_gap_10s_minus_30s']}")
 ```
 
-### Cell S5 — encoder frames
+### Cell 7 — stage S5: encoder frames
 
 About 12 minutes on two GPUs, 0.4 GPU-hours. **Expected output:** one line per feature set, for example `[S5 ...] meld_10s/train: done in 4.1 min`. It ends with `N feature sets ready for M sound runs; X GB free in /tmp`. Features stay in `/tmp/features` and are not saved.
 
 ```python
-# Cell S5 - encoder frames, trimmed, fp16 shards in /tmp/features (spec §8.2), on both GPUs.
+# Cell 7 (stage S5) - encoder frames, trimmed, fp16 shards in /tmp/features (spec §8.2), on both GPUs.
 SOUND_RUNS = [("main", s) for s in SEEDS]
 if RUN_ABLATIONS:
     SOUND_RUNS += [("A", s) for s in SEEDS if not SKIP_A] + [("W", s) for s in SEEDS if not SKIP_W]
@@ -642,12 +661,12 @@ status("S5", f"{len(needed)} feature sets ready for {len(pending)} sound runs; "
        f"{shutil.disk_usage(TMP).free / 1e9:.0f} GB free in /tmp")
 ```
 
-### Cell S6 — sound heads
+### Cell 8 — stage S6: sound heads
 
 About 14 minutes, 0.45 GPU-hours. There are 9 runs (main, A and W, × 3 seeds), two at a time. **Expected output:** per run, `S6_main_seed0 started on GPU 0`, then `S6_main_seed0 finished in 2.8 min: [main seed 0] best dev wF1 43.10`. Expect roughly 40–46 for main (§10.9). Logs: `logs/S6_*.log`.
 
 ```python
-# Cell S6 - sound heads: main, A and W x seeds, one per GPU at a time (spec §8.2).
+# Cell 8 (stage S6) - sound heads: main, A and W x seeds, one per GPU at a time (spec §8.2).
 jobs = []
 for r, s in SOUND_RUNS:
     w = W_OTHER if r == "W" else W
@@ -660,12 +679,12 @@ run_queue(jobs, "S6")
 status("S6", f"sound runs finished; failed or skipped so far: {FAILED or 'none'}")
 ```
 
-### Cell S7 — text models
+### Cell 9 — stage S7: text models
 
 About 30 minutes, 1.0 GPU-hours. There are 6 runs (main and T, × 3 seeds), two at a time, one per GPU. **Expected output:** per run, `S7_main_seed0 finished in 10.2 min: [text main seed 0] best dev wF1 (Whisper) 54.3`. All three main seeds are saved as fp16 safetensors (F2).
 
 ```python
-# Cell S7 - text models: main and T x seeds, two at a time, one per GPU (spec §8.3).
+# Cell 9 (stage S7) - text models: main and T x seeds, two at a time, one per GPU (spec §8.3).
 TEXT_RUNS = [("main", s) for s in SEEDS] + ([("T", s) for s in SEEDS] if RUN_ABLATIONS else [])
 jobs = []
 for r, s in TEXT_RUNS:
@@ -677,7 +696,7 @@ run_queue(jobs, "S7")
 status("S7", f"text runs finished; failed or skipped so far: {FAILED or 'none'}")
 ```
 
-### Cell S8 — export
+### Cell 10 — stage S8: export
 
 About 3 minutes. **Expected output:** the final results block, then `[S8 ...] emotion_outputs.zip 0.8 GB`.
 
@@ -696,7 +715,7 @@ elapsed_h: 1.9
 ```
 
 ```python
-# Cell S8 - export: models, predictions, metrics.json, final results block, zip (spec §9.3, §9.5).
+# Cell 10 (stage S8) - export: models, predictions, metrics.json, final results block, zip (spec §9.3, §9.5).
 import zipfile
 from emotion_analyzer import evaluate
 
@@ -742,25 +761,7 @@ print(block)
 status("S8", f"emotion_outputs.zip {zpath.stat().st_size / 1e9:.2f} GB - download it from the version's Output tab")
 ```
 
-## 8. Download the results
-
-1. Open the finished version (**View Versions** → the commit) → **Output**.
-2. Download **`emotion_outputs.zip`** into `C:\Users\adity\Downloads` (about 0.8 GB), and say so in the session. Phase 6 moves it into the git-ignored `data/kaggle/`.
-3. If the browser download fails, use the Kaggle CLI, with your API token in `%USERPROFILE%\.kaggle\kaggle.json`:
-
-   ```
-   C:\Users\adity\Downloads
-   kaggle kernels output <your-username>/emotion-analyzer-train -p C:\Users\adity\Downloads
-   ```
-
-**What the zip holds** (§9.5):
-- `models/`: `sound_head.pt` and `sound_head.json` (the main seed with the best dev weighted-F1), `text_model_seed{0,1,2}/` (fp16 safetensors plus the tokenizer), and `decision.json`.
-- `predictions/`: dev and test probabilities for every run, named `{sound|text}_{run}_seed{k}_{split}[_{real|whisper}].npz`.
-- `transcripts/`: per-utterance transcripts, WER and `decision.json`. These stay out of git (F3).
-- `metrics.json`.
-- `logs/`: `final_results.txt`, `s0_check.txt`, `class_tables.csv`, the training histories and every subprocess log.
-
-## 9. Local rehearsal (Phase 5)
+## 5. Local rehearsal (Phase 5)
 
 Before any Kaggle run, the same cells run on the laptop CPU, on a tiny subset:
 
@@ -770,5 +771,5 @@ E:\AIDS\Project\emotion-analyzer
 ```
 
 - It builds the package in a scratch folder, along with stand-ins for the acted corpora made from local MELD dev clips (they stay in the scratch folder).
-- It runs cells C and S0–S8 in one Python process, as a notebook kernel would, with `EA_DRY_RUN=1`. That means 12 clips per split, 2 seeds, 3 sound epochs and 1 text epoch.
+- It runs cells 1–10 in one Python process, as a notebook kernel would, with `EA_DRY_RUN=1`. That means 12 clips per split, 2 seeds, 3 sound epochs and 1 text epoch.
 - It then runs them again as a fresh session with the first run's output attached as an input. This checks that every finished stage is reused.

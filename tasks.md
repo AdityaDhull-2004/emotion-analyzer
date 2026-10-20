@@ -161,7 +161,7 @@ Then the build carries straight on to the next phase.
   - add `emotion-analyzer-code`, `ejlok1/cremad` and `uwrfkaggler/ravdess-emotional-speech-audio` as inputs;
   - set Accelerator GPU T4 ×2 and Internet On;
   - paste the cells from `KAGGLE.md`
-- [ ] **USER** Run only S0 in the editor, download `s0_check.txt` from the Output panel into `C:\Users\adity\Downloads`, and say so
+- [ ] **USER** Run only cells 1 and 2 (stage S0) in the editor, download `s0_check.txt` from the Output panel into `C:\Users\adity\Downloads`, and say so
 - [ ] Read `C:\Users\adity\Downloads\s0_check.txt` and check it against `KAGGLE.md` (the CUDA subprocess test, free disk, the re-estimated times), then give the go-ahead or the fix
 - [ ] **USER** Save Version → Save & Run All (Commit). If it fails part-way, follow the resume steps in `KAGGLE.md`.
 - [ ] **USER** Download `emotion_outputs.zip` into `C:\Users\adity\Downloads` and say so

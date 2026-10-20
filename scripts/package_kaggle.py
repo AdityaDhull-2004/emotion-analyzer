@@ -9,10 +9,10 @@ Writes
   kaggle/code/emotion-analyzer-code.zip   the same tree zipped; upload it as the private dataset
                                           `emotion-analyzer-code` (Kaggle unpacks it)
   kaggle/code/emotion-analyzer-train.ipynb  the cells from KAGGLE.md as a notebook (File > Import)
-  kaggle/code/cells/C.py, S0.py ... S8.py the same cells as plain files (used by the local dry-run)
+  kaggle/code/cells/1.py ... 10.py        the same cells as plain files (used by the local dry-run)
 
-The cells are taken from KAGGLE.md: each `### Cell <ID>` heading is followed by one
-```python block, which is the cell.
+The cells are taken from KAGGLE.md: each `### Cell <N> — <title>` heading (N = 1 to 10) is
+followed by one ```python block, which is the cell. The notebook shows each heading above its cell.
 """
 
 import argparse
@@ -31,16 +31,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "kaggle" / "code"
 DATASET = "emotion-analyzer-code"
-CELL_RE = re.compile(r"^### Cell (\w+)[^\n]*\n(?:(?!^### ).)*?^```python\n(.*?)^```", re.M | re.S)
-CELL_ORDER = ["C", "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"]
+CELL_RE = re.compile(r"^### Cell (\w+)([^\n]*)\n(?:(?!^### ).)*?^```python\n(.*?)^```", re.M | re.S)
+CELL_ORDER = [str(i) for i in range(1, 11)]   # cell 1 = settings, cells 2-10 = stages S0-S8
 
 
 def read_cells(kaggle_md=ROOT / "KAGGLE.md"):
-    cells = {m.group(1): m.group(2) for m in CELL_RE.finditer(kaggle_md.read_text(encoding="utf-8"))}
-    missing = [c for c in CELL_ORDER if c not in cells]
+    found = {m.group(1): (m.group(2).strip(), m.group(3))
+             for m in CELL_RE.finditer(kaggle_md.read_text(encoding="utf-8"))}
+    missing = [c for c in CELL_ORDER if c not in found]
     if missing:
         raise SystemExit(f"KAGGLE.md is missing cells {missing}")
-    return [(c, cells[c]) for c in CELL_ORDER]
+    return [(c, found[c][0], found[c][1]) for c in CELL_ORDER]
 
 
 def notebook(cells):
@@ -48,11 +49,15 @@ def notebook(cells):
         return {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [],
                 "source": src.splitlines(keepends=True)}
 
-    head = {"cell_type": "markdown", "metadata": {},
-            "source": ["# emotion-analyzer-train\n",
-                       "Cells from KAGGLE.md. Pass 1: run only C and S0. Pass 2: Save Version > "
-                       "Save & Run All (Commit).\n"]}
-    return {"cells": [head] + [code(src) for _, src in cells],
+    def heading(text):
+        return {"cell_type": "markdown", "metadata": {}, "source": [text]}
+
+    head = heading("# emotion-analyzer-train\n\nCells 1-10 from KAGGLE.md. Pass 1: run only cells 1 and 2. "
+                   "Pass 2: Save Version > Save & Run All (Commit).\n")
+    body = []
+    for cid, title, src in cells:
+        body += [heading(f"### Cell {cid} {title}\n"), code(src)]
+    return {"cells": [head] + body,
             "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python",
                                         "name": "python3"},
                          "language_info": {"name": "python"}},
@@ -94,7 +99,7 @@ def build(out=OUT):
 
     cells = read_cells()
     (out / "cells").mkdir()
-    for cid, src in cells:
+    for cid, _title, src in cells:
         (out / "cells" / f"{cid}.py").write_text(src, encoding="utf-8")
     (out / "emotion-analyzer-train.ipynb").write_text(json.dumps(notebook(cells), indent=1),
                                                       encoding="utf-8")
