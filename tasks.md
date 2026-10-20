@@ -48,7 +48,7 @@ Then the build carries straight on to the next phase.
 ## User tasks to do in parallel
 
 - [x] **USER-ANYTIME** **Needed by the Kaggle run:** Kaggle account phone-verified (required for Internet On)
-- [ ] **USER-ANYTIME** **Needed by P10:** at the end of the first sitting, run a trial `/export transcript-backup-1.md` (F14)
+- [x] **USER-ANYTIME** **Needed by P10:** at the end of the first sitting, run a trial `/export transcript-backup-1.md` (F14) *(not needed: the real export on 2026-10-20 already spans the whole session across its compactions)*
 - [x] **USER-ANYTIME** **Needed by P7:** record 30–50 clips of 3–8 s, with at least 4 per emotion and varied everyday sentences, into `data/own/{emotion}_{nn}.{ext}`. The speakers' consent covers sending the clips to Gemini (F15). *(28 clips, 4 per emotion, 3.5–6.7 s, M4A: two short of 30, noted in `issues.md`.)*
 - [x] **USER-ANYTIME** **Needed by P7:** copy `.env.example` to `.env` and add `GEMINI_API_KEY` (never paste it into the chat)
 - [x] **USER-ANYTIME** **Needed by P8:** list the clips whose speakers agreed to be demo samples in `data/own/demo_ok.txt`, one file name per line *(7 clips, one per emotion; no longer used from v1.6)*
@@ -266,9 +266,9 @@ Then the build carries straight on to the next phase.
 - [x] Remove the demo clips from the page: the sample buttons, true labels and right/wrong marks, Run all demos and its scoreboard, and the code and styles that serve them
 - [x] Delete `app/static/samples/` and the step that copied the clips (`data.copy_demo_samples`, the `demo_ok.txt` reader and their config entries), and drop the `.gitignore` entry *(the 7 copied clips and `index.json`; the originals stay in `data/own/`)*
 - [x] No route serves audio or anything from `data/`: `/static/` serves only the page's HTML, CSS and JavaScript, and tests check it (AC-13) *(`PageFiles` in `app/main.py`; two new API tests)*
-- [ ] `scripts/offline_check.ps1` analyses a committed fixture from `tests/fixtures/`; `scripts/smoke.ps1` also checks that no audio file can be fetched
+- [x] `scripts/offline_check.ps1` analyses a committed fixture from `tests/fixtures/`; `scripts/smoke.ps1` also checks that no audio file can be fetched *(offline dry run on the fixture; smoke: 8 paths, none served)*
 - [x] README, tests and page text updated; the fast tests and the slow API test pass; commit *(68 fast tests and the slow API test pass)*
-- [ ] Restart the server and the tunnel, run the smoke check through both real addresses, confirm that no audio file can be fetched, and give the user the new tunnel link
+- [x] Restart the server and the tunnel, run the smoke check through both real addresses, confirm that no audio file can be fetched, and give the user the new tunnel link *(both addresses pass, and a browser on each received no audio)*
 - [x] **USER** In an administrator PowerShell, add the inbound rule for TCP 8443 on the Private profile, and set the Wi-Fi network to Private *(2026-10-20: checked: `iiscwlan` is Private, and the rule is enabled: inbound, TCP 8443, Private, LocalSubnet)*
 - [ ] **USER** Open the app on your phone on the same Wi-Fi, accept the certificate warning once, then test upload and record. Also open the tunnel's `trycloudflare.com` address on mobile data. *(2026-10-20: the Wi-Fi part is confirmed in `logs/server.log`. The tunnel part isn't: none of the phone's requests reached the tunnel, and cloudflared counted only the 33 test requests. Redo it with the phone's Wi-Fi off and a new tunnel address.)*
 - [ ] **USER** Offline check, while this session is idle (the session itself needs the internet):
@@ -288,10 +288,10 @@ Then the build carries straight on to the next phase.
 - [ ] `tests/test_repo_rules.py`: the AC-13 scan (the only audio tracked in git is `tests/fixtures/`; the app serves no audio files; no banned checkpoint in code or config)
 - [ ] Final full test run, including `slow` → `insights.md`
 - [ ] Fresh-clone walkthrough of the README (install, tests, serve) → `insights.md`
-- [ ] `tools/transcript_to_html.py`, built and tested against the trial export (F14), with the session's `.jsonl` log as the fallback source
+- [x] `tools/transcript_to_html.py`, built and tested against the trial export (F14), with the session's `.jsonl` log as the fallback source *(built against the real export; the `.jsonl` log is used to check the turns; `tests/test_transcript.py`)*
 - [ ] **USER** Read the README end to end and confirm a new user could follow it (the AC-14 manual check)
-- [ ] **USER** Run `/export transcript.md` at the end of the session
-- [ ] `transcript.html` built from `transcript.md`: "Turn N" headings, each response in a collapsed block, the turn count checked against the user's messages; commit
+- [x] **USER** Run `/export transcript.md` at the end of the session *(2026-10-20, after turn 17; if the session goes on, export again and re-run the converter)*
+- [ ] `transcript.html` built from `transcript.md`: "Turn N" headings, each response in a collapsed block, the turn count checked against the user's messages; commit *(17 turns, matching the 17 typed messages in the session log)*
 - **Done when:** AC-13 to AC-15 pass.
   - AC-13: no MELD audio in git, no audio served by the app, and no banned checkpoint anywhere in the code (a test scans the repository and config)
   - AC-14: the README lets a new user install, run, train (via `KAGGLE.md`) and deploy from scratch (manual check)

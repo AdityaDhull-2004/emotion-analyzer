@@ -330,3 +330,19 @@ All on MELD test (2,610 utterances) unless stated. The deployed system has the s
   - New API tests: the old demo paths, `data/own/` and path tricks into it give 404 and never audio, and the page-file filter is checked with audio in a temporary folder.
   - 68 fast tests and the slow API test pass.
 - **Offline check, dry run with the Wi-Fi on:** it now analyses the committed fixture `tests/fixtures/speech_short.wav`. The server started in 8.5 s and the fixture came out joy 45% in 1.7 s. The run was correctly called "NOT VALID" because the Wi-Fi was on.
+- **After the change, through the real addresses** (server restarted at 22:45, new tunnel address):
+  - `smoke.ps1` through `https://10.217.15.89:8443`: health and analyze pass, and all 8 audio paths give 404.
+  - Through the tunnel: the same, except that 2 of the paths get 400. Cloudflare rejects the encoded path tricks before they reach the laptop. No audio either way.
+  - **Browser, through both routes** (headless Chrome, uploads from a local fixture): no demo controls are left, and upload, drag and drop, history and Space-to-record work with no script errors. Chrome recorded every response the page received: only `/`, `style.css`, `app.js`, `/api/report`, `/api/health` and `/api/analyze`, and none was audio.
+  - The Public-network warning in `serve.ps1` is gone now that the Wi-Fi is Private.
+
+## P10 Transcript
+
+- **`transcript.md` (the `/export` after turn 17) starts at the first message** and runs across the session's compactions, so no backup files were needed.
+- **Format:** a user message starts with `❯ ` and its lines are padded to 80 columns. A response is everything up to the next `❯`: `●` for text and tool calls, `⎿` for their output, `✻` for the time taken and `※` for Claude Code's recaps. Markdown is already rendered for the terminal, and tables are drawn with box characters.
+- **`tools/transcript_to_html.py` → `transcript.html`** (591 KB, one file, no external requests): 17 "Turn N" headings, each with the full message and the whole response in one collapsed block, a list of turns at the top, and Expand all and Collapse all buttons. All transcript text is HTML-escaped.
+- **Checks:**
+  - **Against the session log:** 17 turns match the 17 messages the user typed before the export, in order and word for word (whitespace aside). The log has one more typed message, the request to convert the export.
+  - **Spot-check, turns 1, 9 and 17:** read back from the page, each message and response is identical to the source. So are all 17 turns, and all 9,570 non-blank source lines are on the page.
+  - **Headless Chrome:** Expand all opens all 17 blocks and Collapse all closes them. The turn links jump to their turn, the only request is the file itself, there are no script errors, and nothing scrolls sideways at phone width.
+- Before committing, `transcript.md` was checked for the Gemini key, the user's email and the own-recording transcripts (whole, and any 5 consecutive words): none were found.

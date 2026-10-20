@@ -113,3 +113,12 @@ Known problems and errors, newest at the bottom of each phase.
 - Two slips while making the change, both caught before the tests:
   - a shell escape turned `\f` into a form feed in a README path;
   - PowerShell read `"$got:"` as a scoped variable, now `${got}`.
+- **The second round of phone tests and the offline check (reported at 22:50) aren't in the evidence.** They are not recorded as done.
+  - Since the 22:45 restart, every line in `logs/server.log` is a P9 check (curl and headless Chrome), and the tunnel counter is still 16, exactly those checks.
+  - The phone's last request was at 22:27, in the earlier Wi-Fi session.
+  - `results/offline_check.txt` doesn't exist. Windows' Wi-Fi log has no disconnect since 13:06. The server held port 8443 the whole time, so `offline_check.ps1` would have stopped at once with "Port 8443 is in use".
+
+## P10 Transcript
+
+- **One turn's message had no empty line after it.** In turn 14 the export put "Ran 2 shell commands" straight after the user's message, so "the message ends at the first empty line" swallowed that line into it. The session-log check caught it (13 of 17 turns matched). The converter now ends a message at the first line that isn't padded to the terminal width, and the test covers that case.
+- The export shortens long tool output itself ("… +N lines (ctrl+o to expand)"), so `transcript.html` shows what the export holds. The full output is only in the session's `.jsonl` log, outside the repository.
