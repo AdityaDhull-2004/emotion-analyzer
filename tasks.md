@@ -76,20 +76,20 @@ Then the build carries straight on to the next phase.
 
 ## P2 Data
 
-- [ ] `data/meld/dev/`: `archive/dev.tar.gz` and `dev.csv` from `ajyy/MELD_audio`, via `hf_hub_download`
-- [ ] `src/emotion_analyzer/data.py`, the MELD part:
+- [x] `data/meld/dev/`: `archive/dev.tar.gz` and `dev.csv` from `ajyy/MELD_audio`, via `hf_hub_download`
+- [x] `src/emotion_analyzer/data.py`, the MELD part:
   - manifests, and the inner join on (`Dialogue_ID`, `Utterance_ID`);
   - `ftfy` text repair;
   - count assertions;
   - unreadable clips, or clips under 0.1 s, dropped and logged in `issues.md`
-- [ ] `data.py`: CREMA-D and RAVDESS loaders with the §7.2 label maps (RAVDESS from one folder tree, de-duplicated by file name, resampled to 16 kHz)
-- [ ] `data.py`: own-recordings loader (label read from `{emotion}_{nn}.{ext}`) and the `demo_ok.txt` reader
-- [ ] `tests/test_data.py`:
+- [x] `data.py`: CREMA-D and RAVDESS loaders with the §7.2 label maps (RAVDESS from one folder tree, de-duplicated by file name, resampled to 16 kHz)
+- [x] `data.py`: own-recordings loader (label read from `{emotion}_{nn}.{ext}`) and the `demo_ok.txt` reader
+- [x] `tests/test_data.py`:
   - the dev join gives 1,108 pairs, with `dia110_utt7` missing;
   - the label maps;
   - file-name parsing;
   - text repair never touches the labels
-- [ ] `insights.md`: a short data report (class counts, durations, defects found)
+- [x] `insights.md`: a short data report (class counts, durations, defects found)
 - **Done when:** the AC-01 logic is tested on dev (1,108 pairs) and the label-map tests pass. AC-01: MELD joins to 9,988 / 1,108 / 2,610 audio–label pairs (train and test are asserted on Kaggle in S2).
 
 ## P3 Speech pipeline
