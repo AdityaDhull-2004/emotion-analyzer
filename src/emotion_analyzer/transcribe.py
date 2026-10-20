@@ -7,6 +7,8 @@ writes `.part{k}` files; `merge_parts` joins them.
 
 Example (local CPU, 300 dev clips):
     python -m emotion_analyzer.transcribe --split dev --windows 10 30 --limit 300 --out data/kaggle/p3
+
+S4 (`--decide`) reads the WER files and writes `decision.json` by the §8.1 rule.
 """
 
 import argparse
@@ -19,7 +21,7 @@ import pandas as pd
 
 from . import config, data, metrics, speech
 
-COLUMNS = ["dialogue_id", "utterance_id", "label", "duration_s", "reference", "hypothesis"]
+COLUMNS = ["id", "dialogue_id", "utterance_id", "label", "duration_s", "reference", "hypothesis"]
 
 
 def select(manifest, limit=None, seed=0, part=0, parts=1):
@@ -40,6 +42,7 @@ def transcribe_manifest(pipe, df, window_s, batch_size=16, log_every=200):
             print(f"  {window_s}s window: {len(hyps)}/{len(df)} clips, "
                   f"{time.perf_counter() - t0:.0f} s", flush=True)
     return pd.DataFrame({
+        "id": df["id"].to_numpy(),
         "dialogue_id": df["dialogue_id"].to_numpy(),
         "utterance_id": df["utterance_id"].to_numpy(),
         "label": df["label"].to_numpy(),
@@ -70,9 +73,37 @@ def merge_parts(out_dir, split, window_s, parts):
     return df, summary
 
 
+def decide_window(transcripts_dir, case=config.WINDOW_CASE, max_gap=config.WER_RULE_MAX_GAP):
+    """S4 (§8.1). Case "a": 10 s if WER(10 s) - WER(30 s) <= max_gap on dev, else 30 s.
+    Case "b": the window stays 10 s and the WER cost is recorded for dev and test."""
+    tdir = Path(transcripts_dir)
+    wer = {}
+    for split in ("dev", "test"):
+        for w in config.WINDOWS_S:
+            f = tdir / f"wer_{split}_{w}s.json"
+            if f.exists():
+                wer[f"{split}_{w}s"] = round(json.loads(f.read_text())["wer"], 2)
+    gaps = {split: round(wer[f"{split}_10s"] - wer[f"{split}_30s"], 2) for split in ("dev", "test")
+            if f"{split}_10s" in wer and f"{split}_30s" in wer}
+    if "dev" not in gaps:
+        raise FileNotFoundError(f"S4 needs wer_dev_10s.json and wer_dev_30s.json in {tdir}; run S3 first")
+    if case == "a":
+        window = 10 if gaps["dev"] <= max_gap else 30
+        rule = f"case a: dev WER gap <= {max_gap} -> 10 s, else 30 s"
+    elif case == "b":
+        window, rule = 10, "case b: 10 s fixed by latency; WER cost recorded"
+    else:
+        raise ValueError(f"window case must be 'a' or 'b' at S4, not {case!r}")
+    decision = {"case": case, "window_s": window, "rule": rule, "asr_model": config.ASR_MODEL,
+                "wer": wer, "wer_gap_10s_minus_30s": gaps}
+    (tdir / "decision.json").write_text(json.dumps(decision, indent=2))
+    return decision
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--split", required=True, choices=data.MELD_SPLITS)
+    ap.add_argument("--split", choices=data.MELD_SPLITS)
+    ap.add_argument("--manifest", default=None, help="S2 manifest CSV instead of reading MELD")
     ap.add_argument("--meld-root", default=str(config.MELD_DIR))
     ap.add_argument("--windows", type=int, nargs="+", default=list(config.WINDOWS_S))
     ap.add_argument("--out", default=str(config.KAGGLE_OUT_DIR / "transcripts"))
@@ -85,17 +116,40 @@ def main(argv=None):
     ap.add_argument("--part", type=int, default=0)
     ap.add_argument("--parts", type=int, default=1)
     ap.add_argument("--no-count-check", action="store_true")
+    ap.add_argument("--backend", default="ct2", choices=["ct2", "hf"],
+                    help="hf = the transformers fallback (§9.2)")
+    ap.add_argument("--merge", action="store_true",
+                    help="join the --parts outputs of an earlier run instead of transcribing")
+    ap.add_argument("--decide", action="store_true", help="S4: write decision.json from the WER files")
+    ap.add_argument("--case", default=config.WINDOW_CASE, help="the Phase 3 window case")
     args = ap.parse_args(argv)
 
-    manifest, _ = data.meld_manifest(args.split, root=args.meld_root,
-                                     check_counts=not args.no_count_check)
+    if args.decide:
+        d = decide_window(args.out, args.case)
+        print(f"S4: window {d['window_s']} s ({d['rule']}); WER gap {d['wer_gap_10s_minus_30s']}")
+        return
+    if not args.split:
+        ap.error("--split is required")
+
+    if args.merge:
+        for w in args.windows:
+            _, summary = merge_parts(args.out, args.split, w, args.parts)
+            print(f"{args.split} {w}s: WER {summary['wer']:.2f}% on {summary['n']} clips (merged)")
+        return
+
+    if args.manifest:
+        manifest = pd.read_csv(args.manifest, keep_default_na=False)
+    else:
+        manifest, _ = data.meld_manifest(args.split, root=args.meld_root,
+                                         check_counts=not args.no_count_check)
     df = select(manifest, args.limit, args.seed, args.part, args.parts)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     suffix = f".part{args.part}" if args.parts > 1 else ""
 
-    pipe = speech.SpeechPipeline(args.model, device=args.device, compute_type=args.compute_type,
-                                 window_s=args.windows[0], batch_size=args.batch_size)
+    pipe = speech.make_pipeline(args.backend, model_size=args.model, device=args.device,
+                                compute_type=args.compute_type, window_s=args.windows[0],
+                                batch_size=args.batch_size)
     for w in args.windows:
         csv_path = out / f"{args.split}_{w}s{suffix}.csv"
         if csv_path.exists() and len(pd.read_csv(csv_path)) == len(df):

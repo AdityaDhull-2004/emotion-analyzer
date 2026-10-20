@@ -17,5 +17,6 @@ markers = [
     "slow: needs model weights or large data; skipped by the pre-commit hook",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning:torch.ao.*",
+    "ignore:torch.ao.quantization is deprecated:DeprecationWarning",
+    "ignore:.*symlinks.*:UserWarning",
 ]

@@ -4,6 +4,7 @@ Paths default to the repository layout (§13). On Kaggle the code is read-only u
 /kaggle/input, so EA_ROOT points the writable paths somewhere else.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -49,7 +50,16 @@ WINDOWS_S = (10, 30)
 # (10 s minus 30 s) was +2.87 points, so the preliminary choice is 30 s. S4's
 # decision in models/decision.json overrides WINDOW_S once it exists.
 WINDOW_CASE = "a"
-WINDOW_S = 30
+
+
+def _decided_window(default=30):
+    try:
+        return int(json.loads((MODELS_DIR / "decision.json").read_text())["window_s"])
+    except (OSError, ValueError, KeyError):
+        return default
+
+
+WINDOW_S = _decided_window()
 WER_RULE_MAX_GAP = 2.0
 LATENCY_TARGET_S = 2.0  # AC-08
 MEMORY_TARGET_GB = 2.5  # AC-09

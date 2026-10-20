@@ -20,3 +20,7 @@ Known problems and errors, newest at the bottom of each phase.
 - Equal-length chunking of long clips split words at chunk boundaries. `chunk_audio` now cuts at the quietest nearby frame.
 - If S4 picks the 30 s window (the preliminary choice), latency is 1.71 s median and 1.93 s p90 against the 2.0 s limit. Other load on the laptop could push it over.
 - The decode stage includes VAD, which takes about 0.1 s of the 117 ms. §5.3's timing keys have no separate VAD entry.
+
+## P4 Training code
+
+- In smoke runs, the temperature fit hits its upper bound (T = 20) when the text model is near-constant. This only happens with tiny settings. On Kaggle, a T at either bound would point to a training problem and should be checked in P6.

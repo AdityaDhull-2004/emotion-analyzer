@@ -50,3 +50,29 @@ MELD dev, downloaded locally from `ajyy/MELD_audio` (`archive/dev.tar.gz` and `d
 Peak memory in that process was 1.86 GB, including loading RoBERTa in fp32 before quantising it.
 
 **Window case (§8.1): (a).** small.en meets AC-08 (median ≤ 2.0 s) in both windows. Nothing changes: the model stays small.en and S4 chooses the window by WER. The preliminary choice is 30 s, which would meet AC-08 with about 0.3 s to spare but miss the 1.2 s stretch target. Recorded in `config.py` (`WINDOW_CASE = "a"`).
+
+## P4 Training code
+
+**Smoke run of every stage** (local CPU, int8; 36 train / 14 dev / 14 test clips drawn from MELD dev, plus 8 more as a stand-in for the acted corpora; 376 s in total):
+
+| Stage | What ran | Result |
+|---|---|---|
+| S2 | manifests from the MELD loader | 4 CSVs with `id`, `path`, `label_id` |
+| S3 | `transcribe` in both windows; train split in two parts (`--parts 2`), then `--merge` | WER train 34.2 / 37.0, dev 19.1 / 16.4, test 21.4 / 19.7 (10 s / 30 s); about 0.36 s and 1.5 s per clip |
+| S4 | `transcribe --decide --case a` | dev gap +2.73, so the 30 s window was chosen; `decision.json` written |
+| S5 | `features` in the chosen window (MELD, the acted stand-in) and in the other window (ablation W); train in two parts; a rerun skipped the existing shards | 31 MB of fp16 shards; about 1.3 s per clip at 30 s on CPU |
+| S6 | `sound_model`: main ×2 seeds, A, W (4 epochs) | dev weighted-F1 28.6–29.2; checkpoint, history and `pred_{dev,test}.npz` per run |
+| S7 | `text_model`: main seed 0 (saved, fp16 safetensors) and T (real only, not saved), 1 epoch | 67 and 36 training examples; `pred_{dev,test}_{real,whisper}.npz` |
+| Fusion | `fusion --sound … --text …` | T_sound 0.95, T_text 20 (the upper bound: a 1-epoch text model is near-constant), w_sound 0.25 |
+| Deployed path | `SoundClassifier` + int8 `TextClassifier` + `Analyzer` on both fixtures | §5.3 responses: 1 segment (short) and 3 segments (long), with timings and model names |
+
+- The tiny scores mean nothing. One epoch on 67 examples leaves RoBERTa predicting one class. The smoke run checks that every stage's code runs, not how well it learns.
+- The unit tests cover the rules themselves:
+  - the majority baseline reproduces R0 (accuracy 48.1, weighted-F1 31.3);
+  - temperature fitting recovers T = 2.5 on synthetic data;
+  - the weight search breaks ties toward the smallest w;
+  - padding doesn't change the sound head's output;
+  - the head has about 0.27 M parameters;
+  - text-model training and int8 quantisation run, and the quantised layers are `torch.ao.nn.quantized.dynamic.Linear`.
+- The transformers fallback (§9.2) runs the same pipeline through `openai/whisper-*`: features from faster-whisper's extractor and the encoder layers run directly, so the 10 s window works. Tested with tiny.en on CPU, where both windows return the right transcript and 249 frames. S3 and S5 pass it with `--backend hf`.
+- Transcripts now carry the manifest `id`, so the text and sound predictions join on the same key (`fusion.align` checks that the labels agree).

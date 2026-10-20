@@ -123,3 +123,36 @@ def test_long_clip_chunked_transcript_and_frames(pipeline, long_audio):
     expected = sum(speech.valid_frame_count(len(c) / SR, 10)
                    for c in speech.chunk_audio(long_audio, 10))
     assert frames.shape == (expected, 768) and frames.dtype == np.float16
+
+
+@pytest.mark.slow
+def test_transformers_fallback_pipeline(short_audio):
+    """The §9.2 fallback, run on CPU with tiny.en to keep the download small."""
+    hf = speech.make_pipeline("hf", model_size="tiny.en", device="cpu", compute_type="float32",
+                              window_s=10)
+    frames, text, _ = hf.analyze_segment(short_audio, window_s=10)
+    assert frames.shape == (249, 384)
+    assert "believe" in text.lower()
+    assert hf.transcribe_clips([short_audio], 30)[0].lower().startswith("i can")
+
+
+def _wer_files(tmp_path, wers):
+    import json
+
+    for name, w in wers.items():
+        (tmp_path / f"wer_{name}.json").write_text(json.dumps({"wer": w}))
+
+
+def test_window_decision_rule(tmp_path):
+    from emotion_analyzer import transcribe
+
+    _wer_files(tmp_path, {"dev_10s": 26.0, "dev_30s": 24.5, "test_10s": 27.0, "test_30s": 24.0})
+    d = transcribe.decide_window(tmp_path, case="a")
+    assert d["window_s"] == 10 and d["wer_gap_10s_minus_30s"] == {"dev": 1.5, "test": 3.0}
+    _wer_files(tmp_path, {"dev_10s": 27.0})
+    assert transcribe.decide_window(tmp_path, case="a")["window_s"] == 30
+    d = transcribe.decide_window(tmp_path, case="b")
+    assert d["window_s"] == 10 and d["wer_gap_10s_minus_30s"]["test"] == 3.0
+    assert (tmp_path / "decision.json").exists()
+    with pytest.raises(ValueError):
+        transcribe.decide_window(tmp_path, case="c")

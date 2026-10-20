@@ -116,23 +116,23 @@ Then the build carries straight on to the next phase.
 
 ## P4 Training code
 
-- [ ] `src/emotion_analyzer/features.py`: batched encoder frames, long clips in chunks of up to 10 s, fp16 shards with an index, on CPU or CUDA
-- [ ] `src/emotion_analyzer/transcribe.py`:
+- [x] `src/emotion_analyzer/features.py`: batched encoder frames, long clips in chunks of up to 10 s, fp16 shards with an index, on CPU or CUDA
+- [x] `src/emotion_analyzer/transcribe.py`:
   - batch transcription in both windows, with chunking for long clips, and WER per split;
   - runnable as `python -m`, with an option to process one half of the clip list (one GPU each)
-- [ ] `src/emotion_analyzer/sound_model.py`:
+- [x] `src/emotion_analyzer/sound_model.py`:
   - the attention-pooling head (§8.2);
   - its training loop: AdamW, cosine schedule with warm-up, early stopping on dev weighted-F1, frame drop and crop, class weights;
   - inference
-- [ ] `src/emotion_analyzer/text_model.py`:
+- [x] `src/emotion_analyzer/text_model.py`:
   - the RoBERTa classifier (§8.3);
   - its training set: real plus Whisper transcripts, de-duplicated;
   - the training loop, saving every seed's checkpoint (F2);
   - int8 dynamic quantisation, inference, and the optional 3-seed ensemble
-- [ ] `src/emotion_analyzer/fusion.py`: temperature fitting (F1), weighted log-probability fusion, the weight grid search, the disagreement rule
-- [ ] `src/emotion_analyzer/metrics.py`: weighted-F1, macro-F1, accuracy, per-class report, confusion matrix, bootstrap CIs, seed mean ± sd, ECE and reliability-diagram data
-- [ ] `tests/test_models.py`, `tests/test_fusion.py`, `tests/test_metrics.py`
-- [ ] Local smoke run of every stage on a few dev clips with tiny settings → `insights.md`
+- [x] `src/emotion_analyzer/fusion.py`: temperature fitting (F1), weighted log-probability fusion, the weight grid search, the disagreement rule
+- [x] `src/emotion_analyzer/metrics.py`: weighted-F1, macro-F1, accuracy, per-class report, confusion matrix, bootstrap CIs, seed mean ± sd, ECE and reliability-diagram data
+- [x] `tests/test_models.py`, `tests/test_fusion.py`, `tests/test_metrics.py`
+- [x] Local smoke run of every stage on a few dev clips with tiny settings → `insights.md`
 - **Done when:** every stage's code runs end to end locally on tiny settings, and the tests pass.
 
 ## P5 Kaggle package
