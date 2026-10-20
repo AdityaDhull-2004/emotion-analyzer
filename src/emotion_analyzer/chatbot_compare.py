@@ -25,7 +25,17 @@ INSTRUCTION = ("Classify the speaker's emotion into exactly one of: anger, disgu
 # Tried in order until one answers; the newest Flash models first (the free API's chat models).
 MODELS = ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-flash")
 RAW_CSV = config.RESULTS_DIR / "chatbot_raw.csv"
+RAW_COLUMNS = ["file", "label", "answer", "parsed", "latency_s", "model", "model_version"]
 MIN_INTERVAL_S = 6.5  # stays under the free tier's requests-per-minute limit
+
+
+class DailyQuotaExhausted(Exception):
+    """The free tier's requests-per-day quota for the chosen model is used up (20 a day
+    per model in October 2026)."""
+
+
+def _per_day_quota(e):
+    return e.code == 429 and "PerDay" in str(e)
 
 
 def parse_label(answer):
@@ -76,7 +86,9 @@ class Gemini:
 
     def ask(self, audio, retries=5):
         """(answer, seconds, model version). The first call picks the first model that
-        answers; rate-limit and server errors are retried with a growing pause."""
+        answers, and every later clip goes to that model. Per-minute limits and server
+        errors are retried with a growing pause; a used-up daily quota raises
+        DailyQuotaExhausted once the model is chosen."""
         from google.genai import errors
 
         candidates = [self.model] if self.model else self.models
@@ -87,6 +99,11 @@ class Gemini:
                     self.model = model
                     return out
                 except errors.APIError as e:
+                    if _per_day_quota(e):
+                        if self.model is None:
+                            print(f"  {model}: free daily quota used up; trying the next model")
+                            break
+                        raise DailyQuotaExhausted(model) from e
                     if e.code in (429, 500, 503) and attempt < retries - 1:
                         time.sleep(min(60, 8 * 2 ** attempt))
                         continue
@@ -97,14 +114,27 @@ class Gemini:
         raise SystemExit("no Gemini model answered; use the manual ChatGPT fallback (§10.7)")
 
 
-def run(manifest, bot, log=print):
-    rows = []
+def run(manifest, bot, raw_csv=RAW_CSV, log=print):
+    """Ask about every clip not yet in `raw_csv`, appending each answer as it arrives, so
+    a run stopped by the daily quota resumes where it left off, on the same model.
+    Returns all the answers so far; DailyQuotaExhausted propagates after saving."""
+    raw_csv = Path(raw_csv)
+    done = (pd.read_csv(raw_csv, keep_default_na=False) if raw_csv.exists()
+            else pd.DataFrame(columns=RAW_COLUMNS))
+    if len(done):
+        bot.model = done["model"].iloc[0]  # one model for every clip
     for r in manifest.itertuples():
+        name = Path(r.path).name
+        if name in set(done["file"]):
+            continue
         answer, seconds, version = bot.ask(wav_bytes(r.path))
-        rows.append({"file": Path(r.path).name, "label": r.label, "answer": answer,
-                     "parsed": parse_label(answer), "latency_s": round(seconds, 2), "model": version})
-        log(f"  {rows[-1]['file']}: true {r.label}, Gemini '{answer}' ({seconds:.1f} s)")
-    return pd.DataFrame(rows)
+        row = pd.DataFrame([{"file": name, "label": r.label, "answer": answer, "parsed": parse_label(answer),
+                             "latency_s": round(seconds, 2), "model": bot.model, "model_version": version}])
+        raw_csv.parent.mkdir(parents=True, exist_ok=True)
+        row.to_csv(raw_csv, mode="a", header=not raw_csv.exists(), index=False)
+        done = pd.concat([done, row], ignore_index=True)
+        log(f"  {len(done)}/{len(manifest)} {name}: true {r.label}, Gemini '{answer}' ({seconds:.1f} s)")
+    return done
 
 
 def scores(labels, preds):
@@ -122,13 +152,19 @@ def markdown(raw, ours, date):
     invalid = int((df["parsed"] == "").sum())
     agree = 100 * float((df["parsed"] == df["fused"]).mean())
     model = df["model"].iloc[0]
+    versions = sorted(set(df["model_version"].astype(str))) if "model_version" in df else []
+    served = "" if versions in ([], [model]) else f" (the API reported serving `{'`, `'.join(versions)}`)"
     lines = [
         "# Chatbot comparison on the own recordings (§10.7, AC-10)", "",
-        f"- **Chatbot:** Google Gemini through the free API (`google-genai`), model `{model}`, run on {date} "
+        f"- **Chatbot:** Google Gemini through the free API (`google-genai`), model `{model}`{served}, run on {date} "
         "with the API's default generation settings.",
         f"- **Instruction**, the same for every clip: \"{INSTRUCTION}\"",
         f"- **Clips:** the user's {len(df)} own recordings, decoded to 16 kHz mono WAV (the same audio our "
         "system hears). No MELD clips were sent.",
+        *([f"- **Partial:** Gemini has answered {len(df)} of the {len(ours)} recordings so far (the free tier "
+           "allows 20 requests a day per model), so both systems are scored on those clips only. Running "
+           "`python -m emotion_analyzer.chatbot_compare` again after the quota resets finishes the rest."]
+          if len(df) < len(ours) else []),
         "- **Ours:** the deployed system on the laptop CPU (the fused answer), from `own_recordings.md`.", "",
         "| System | Accuracy | 95% CI (accuracy) | Weighted-F1 | Macro-F1 | Median latency per clip | Offline | Audio stays on the laptop |",
         "|---|---:|---|---:|---:|---:|---|---|",
@@ -138,7 +174,8 @@ def markdown(raw, ours, date):
         f"{g['weighted_f1']:.1f} | {g['macro_f1']:.1f} | {df['latency_s'].median():.2f} s (online) | no | no |", "",
         f"Gemini gave an answer outside the 7 labels {invalid} time(s) (counted as wrong). The two systems "
         f"agree on {agree:.0f}% of clips. Gemini's latency is the API round trip from the laptop, upload "
-        "included.", "",
+        "included, plus any retries the client library makes while the service is busy (the slowest answer took "
+        f"{df['latency_s'].max():.0f} s), so the median is the fair figure.", "",
         "**Online and not private.** Each clip leaves the laptop and is processed by Google. Under the "
         "Gemini API's free-tier terms, Google may use submitted content to improve its products. The "
         "speakers consented to this for the comparison (§7.3). Our system runs offline and the audio never "
@@ -159,16 +196,24 @@ def main(argv=None):
                     help="per-clip results of `python -m emotion_analyzer.evaluate own`")
     ap.add_argument("--models", nargs="+", default=list(MODELS))
     ap.add_argument("--reuse", action="store_true", help="re-score results/chatbot_raw.csv without calling the API")
+    ap.add_argument("--restart", action="store_true", help="discard results/chatbot_raw.csv and start again")
     args = ap.parse_args(argv)
 
     ours = pd.read_csv(args.ours, keep_default_na=False)
+    if args.restart:
+        RAW_CSV.unlink(missing_ok=True)
     if args.reuse and RAW_CSV.exists():
         raw = pd.read_csv(RAW_CSV, keep_default_na=False)
     else:
         manifest, _ = data.own_manifest()
-        raw = run(manifest, Gemini(args.models), log=lambda m: print(m, flush=True))
-        config.RESULTS_DIR.mkdir(exist_ok=True)
-        raw.to_csv(RAW_CSV, index=False)
+        try:
+            raw = run(manifest, Gemini(args.models), log=lambda m: print(m, flush=True))
+        except DailyQuotaExhausted as e:
+            raw = pd.read_csv(RAW_CSV, keep_default_na=False) if RAW_CSV.exists() else pd.DataFrame()
+            print(f"The free daily quota of {e} is used up after {len(raw)} of {len(manifest)} clips. "
+                  "The answers so far are saved; run the same command after the quota resets to finish.")
+            if not len(raw):
+                return 1
     md, s = markdown(raw, ours, time.strftime("%Y-%m-%d"))
     (config.RESULTS_DIR / "chatbot.md").write_text(md, encoding="utf-8")
     print(f"Gemini {s['model']}: accuracy {s['gemini']['accuracy']:.1f}, weighted-F1 "
@@ -177,4 +222,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

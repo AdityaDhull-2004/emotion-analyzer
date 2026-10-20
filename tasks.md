@@ -187,22 +187,23 @@ Then the build carries straight on to the next phase.
 
 ## P7 Evaluation
 
-- [ ] Confirm the P7 user tasks are done: clips in `data/own/` and `GEMINI_API_KEY` in `.env`. If not, stop and remind.
-- [ ] `evaluate.py` → `results/results_table.md` and `.csv`: rows R0–R9 (§10.2) with weighted-F1, macro-F1, accuracy, 95% bootstrap CIs and seed mean ± sd (F5)
-- [ ] `evaluate.py` → `results/per_class.md` and the confusion matrices `results/confusion_*.png` (150 dpi)
-- [ ] `evaluate.py` → `results/wer.md`: WER for dev and test in both windows, and the window decision
-- [ ] `evaluate.py` → `results/calibration.md` and `results/reliability.png`: fused test ECE before and after temperature scaling (AC-16)
-- [ ] Check mains power (ask only if on battery), then run `latency.py` on the deployed system → `results/latency.md`:
+- [x] Confirm the P7 user tasks are done: clips in `data/own/` and `GEMINI_API_KEY` in `.env`. If not, stop and remind. *(28 clips; key present)*
+- [x] `evaluate.py` → `results/results_table.md` and `.csv`: rows R0–R9 (§10.2) with weighted-F1, macro-F1, accuracy, 95% bootstrap CIs and seed mean ± sd (F5) *(R9 54.5; fusion gain +1.9 [+0.6, +3.3])*
+- [x] `evaluate.py` → `results/per_class.md` and the confusion matrices `results/confusion_*.png` (150 dpi)
+- [x] `evaluate.py` → `results/wer.md`: WER for dev and test in both windows, and the window decision
+- [x] `evaluate.py` → `results/calibration.md` and `results/reliability.png`: fused test ECE before and after temperature scaling (AC-16) *(9.51 → 6.04)*
+- [x] Check mains power (ask only if on battery), then run `latency.py` on the deployed system → `results/latency.md` *(1.59 s median, 1.40 GB)*:
   - 2 warm-up and 20 timed runs on a 5 s clip;
   - median and p90 per stage and in total;
   - server peak memory
-- [ ] `evaluate.py` → `results/own_recordings.md`: per-clip predictions, accuracy, weighted-F1, small-sample caveat
-- [ ] `src/emotion_analyzer/chatbot_compare.py` (Gemini free API; ChatGPT by hand only if the API is unavailable) → `results/chatbot.md`:
+- [x] `evaluate.py` → `results/own_recordings.md`: per-clip predictions, accuracy, weighted-F1, small-sample caveat *(fused 35.7%, text 60.7%, sound 28.6%)*
+- [x] `src/emotion_analyzer/chatbot_compare.py` (Gemini free API; ChatGPT by hand only if the API is unavailable) → `results/chatbot.md` *(gemini-3.5-flash on 27 of 28 clips so far, 85.2% against our 37.0%)*:
   - accuracy, weighted-F1 and latency next to ours;
   - the model name and date;
   - a note that it's online and not private
-- [ ] `evaluate.py` → `results/error_analysis.md`: 10 MELD test clips where sound and text disagree (transcripts quoted as text), and the confusions per class
-- [ ] Results, figures and a verdict on every AC → `insights.md`
+- [ ] Send the last clip (surprise_04) to the same model after the daily quota resets (12:30 IST on 2026-10-21), regenerate `results/chatbot.md` as complete, and commit *(added: the user's choice)*
+- [x] `evaluate.py` → `results/error_analysis.md`: 10 MELD test clips where sound and text disagree (transcripts quoted as text), and the confusions per class *(352 disagreements; written discussion added)*
+- [x] Results, figures and a verdict on every AC → `insights.md`
 - **Done when:** AC-02 to AC-10 and AC-16 are checked and reported:
   - AC-02: WER reported for dev and test in both windows, and the window set by the §8.1 rule (chosen by WER in case (a); fixed at 10 s with its WER cost in case (b))
   - AC-03: sound only (R1), MELD test weighted-F1 ≥ 40.0 (seed mean)

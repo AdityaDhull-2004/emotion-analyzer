@@ -1,0 +1,49 @@
+{
+  "mode": "deployed",
+  "clip": "speech_short.wav",
+  "clip_s": 4.965,
+  "date": "2026-10-20",
+  "mains_power": true,
+  "models": {
+    "asr": "faster-whisper small.en int8",
+    "window_s": 30,
+    "sound": "attnpool-v1",
+    "text": "roberta-base-meld-v1",
+    "fusion_w_sound": 0.75,
+    "text_precision": "fp32"
+  },
+  "load_s": 10.6,
+  "peak_memory_gb": 1.403,
+  "runs": 20,
+  "warmup": 2,
+  "stages_ms": {
+    "decode": {
+      "median": 122.5,
+      "p90": 130.0
+    },
+    "encode": {
+      "median": 1180.5,
+      "p90": 1219.9
+    },
+    "transcribe": {
+      "median": 259.5,
+      "p90": 273.0
+    },
+    "sound": {
+      "median": 2.0,
+      "p90": 2.0
+    },
+    "text": {
+      "median": 28.0,
+      "p90": 35.2
+    },
+    "fusion": {
+      "median": 0.0,
+      "p90": 0.0
+    },
+    "total": {
+      "median": 1589.5,
+      "p90": 1644.2
+    }
+  }
+}

@@ -44,3 +44,19 @@ Known problems and errors, newest at the bottom of each phase.
 - `tasks.md` said to fit the temperatures and weight on "the Kaggle dev probabilities"; for an int8 text model that would have left the deployed branch uncalibrated (test ECE 16.0). Corrected to the deployed models' dev probabilities, as §8.4 states. With fp32 the two coincide.
 - The P7 evaluation functions (`evaluate.py report/own`, `chatbot_compare.py`) were written while the 33-minute parity pass ran, so they share the P6 commit; P7 runs them and commits their results.
 - Bash here-documents again mangled backslashes and long Python snippets twice (a broken string literal in `latency.py`, a failed `tasks.md` edit). Fixed with the Edit tool and a script file in the scratchpad.
+
+## P7 Evaluation
+
+- **Gemini's free tier allows 20 requests a day per model.** The first chatbot run used `gemini-3.8-flash`. After 20 clips it got `429 RESOURCE_EXHAUSTED` (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, limit 20), and the script lost all 20 answers because it only wrote `chatbot_raw.csv` at the end.
+  - Fixed: each answer is now appended as it arrives.
+  - A rerun resumes on the same model, and a used-up daily quota stops the run cleanly with a partial report.
+  - The rerun found `gemini-3.7-flash` already out of quota too, so it used `gemini-3.5-flash` (served as `gemini-3.6-flash`).
+  - It had answered 10 clips, slowly, with the client retrying while the service was busy, when the user put a new key in `.env`. That run was stopped and resumed on the same model with the new key.
+  - The new key's daily quota ran out after 17 more requests, so 27 of 28 clips are answered.
+  - The user chose to commit P7 with the report marked partial and send the last clip (surprise_04) after the quota resets.
+- **New voices: the sound branch doesn't transfer.** On the 28 own recordings, sound is 28.6% accurate, against 60.7% for text. Because w_sound is 0.75 (fitted on MELD dev), the fused answer follows the sound branch and gets 35.7%.
+  - Not changed: the weight is fitted on dev by the spec's rule, and 28 clips are too few to refit it on.
+  - Reported in `own_recordings.md` and `insights.md`.
+- The own recordings are 28 clips, not the 30–50 that §7.3 asks for (4 per emotion, which meets the minimum per class).
+- The Kaggle text prediction files list test clips in a different order from the sound files. Rows scored on their own are unaffected. `fusion_gains` reorders by id before pairing rows, and `fusion.align` already does this for fusion.
+- A Bash here-document turned `"\n"` in a Python snippet into real line breaks again (in `evaluate.keep_discussion`). Fixed with the Edit tool.

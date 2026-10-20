@@ -247,8 +247,11 @@ def test_results_rows_and_report_parts(tmp_path, monkeypatch):
         assert r["ci_low"] < r["ci_high"]
     assert by["R4"]["weighted_f1_mean"] > by["R5"]["weighted_f1_mean"] > by["R0"]["weighted_f1_mean"]
     assert "dev_weighted_f1_mean" in by["R7"] and "dev_weighted_f1_mean" not in by["R9"]
-    md = evaluate.results_table_markdown(rows, params)
-    assert len(re.findall(r"\n\| R\d \|", md)) == 10
+    gains = evaluate.fusion_gains(params, pred_dir=pred)
+    assert set(gains) == {"R7-R5", "R7-R1"}
+    assert all(g["ci_low"] <= g["gain"] <= g["ci_high"] for g in gains.values())
+    md = evaluate.results_table_markdown(rows, params, gains)
+    assert len(re.findall(r"\n\| R\d \|", md)) == 10 and "R7 − R5" in md
 
     parts = evaluate.deployed_test_parts(params, t_int8, pred_dir=pred)
     assert evaluate.per_class_report(parts, tmp_path).count("| anger |") == 3
@@ -294,3 +297,52 @@ def test_chatbot_answer_parsing_and_report():
     md, s = cc.markdown(raw, ours, "2026-10-20")
     assert s["gemini"]["accuracy"] == 50.0 and s["ours"]["accuracy"] == 100.0 and s["invalid"] == 1
     assert "not private" in md and "`gemini-x`" in md and '("happy")' in md
+
+
+def test_regenerated_report_keeps_the_written_discussion(tmp_path):
+    from emotion_analyzer import evaluate
+
+    path = tmp_path / "error_analysis.md"
+    assert evaluate.keep_discussion(path, "# Tables\n") == "# Tables\n"
+    path.write_text("# Old tables\n\n## Discussion\n\nWritten by hand.\n", encoding="utf-8")
+    assert evaluate.keep_discussion(path, "# New tables\n") == "# New tables\n\n## Discussion\n\nWritten by hand.\n"
+
+
+def test_chatbot_run_saves_each_answer_and_resumes(tmp_path):
+    """A run stopped by the daily quota keeps its answers and resumes on the same model."""
+    import pandas as pd
+    import soundfile as sf
+
+    from emotion_analyzer import chatbot_compare as cc
+
+    paths = []
+    for name in ["anger_01.wav", "joy_01.wav", "sadness_01.wav"]:
+        sf.write(str(tmp_path / name), np.zeros(8000, dtype=np.float32), 16000)
+        paths.append(tmp_path / name)
+    manifest = pd.DataFrame({"path": paths, "label": ["anger", "joy", "sadness"]})
+
+    class FakeBot:
+        def __init__(self, budget):
+            self.model, self.budget, self.asked = None, budget, 0
+
+        def ask(self, audio):
+            if self.asked == self.budget:
+                raise cc.DailyQuotaExhausted(self.model)
+            self.asked += 1
+            self.model = self.model or "gemini-x"
+            return "Joy.", 1.0, "gemini-x-001"
+
+    raw_csv = tmp_path / "raw.csv"
+    with pytest.raises(cc.DailyQuotaExhausted):
+        cc.run(manifest, FakeBot(2), raw_csv, log=lambda *_: None)
+    assert len(pd.read_csv(raw_csv)) == 2
+    second = FakeBot(5)
+    raw = cc.run(manifest, second, raw_csv, log=lambda *_: None)
+    assert second.asked == 1 and list(raw["file"]) == ["anger_01.wav", "joy_01.wav", "sadness_01.wav"]
+    assert set(raw["model"]) == {"gemini-x"} and set(raw["parsed"]) == {"joy"}
+    ours = pd.DataFrame({"file": raw["file"], "fused": ["anger", "joy", "neutral"],
+                         "fused_conf": 0.5, "total_ms": 900})
+    full, _ = cc.markdown(raw, ours, "2026-10-20")
+    part, _ = cc.markdown(raw.head(2), ours, "2026-10-20")
+    assert "Partial" not in full and "2 of the 3 recordings" in part
+    assert "reported serving `gemini-x-001`" in full

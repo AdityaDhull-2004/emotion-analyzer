@@ -80,6 +80,24 @@ def bootstrap_ci_seeds(y_true, preds, metric=weighted_f1_counts, n=config.BOOTST
     return float(np.percentile(stats, 100 * alpha / 2)), float(np.percentile(stats, 100 * (1 - alpha / 2)))
 
 
+def paired_bootstrap_gain(y_true, preds_a, preds_b, metric=weighted_f1_counts,
+                          n=config.BOOTSTRAP_RESAMPLES, seed=config.BOOTSTRAP_SEED, alpha=0.05):
+    """(gain, low, high): the seed mean of `preds_a` minus that of `preds_b` (lists of
+    per-seed predicted labels on the same utterances), with a paired bootstrap interval
+    in which every resample scores both on the same utterances."""
+    y_true = np.asarray(y_true)
+    a, b = [np.asarray(p) for p in preds_a], [np.asarray(p) for p in preds_b]
+
+    def gain(idx):
+        return (np.mean([metric(y_true[idx], p[idx]) for p in a])
+                - np.mean([metric(y_true[idx], p[idx]) for p in b]))
+
+    rng = np.random.default_rng(seed)
+    stats = np.array([gain(rng.integers(0, len(y_true), len(y_true))) for _ in range(n)])
+    return (float(gain(np.arange(len(y_true)))), float(np.percentile(stats, 100 * alpha / 2)),
+            float(np.percentile(stats, 100 * (1 - alpha / 2))))
+
+
 def mean_sd(values):
     v = np.asarray(values, dtype=float)
     return float(v.mean()), float(v.std(ddof=1)) if len(v) > 1 else 0.0

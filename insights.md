@@ -159,3 +159,83 @@ Peak memory in that process was 1.86 GB, including loading RoBERTa in fp32 befor
   - The sound gap is under 1.5, so the head isn't retrained (§16).
   - With int8 text, parity also passed (sound +0.63, text +0.20, fused −0.91).
 - `latency.py` times the deployed system (`fusion.load_analyzer`, the object the app serves): 2 warm-up and 20 timed runs, per-stage median and p90, and peak memory. `--text-seeds 0 1 2` times the ensemble and `--text-precision` either precision.
+
+## P7 Evaluation
+
+All on MELD test (2,610 utterances) unless stated. The deployed system has the sound head (main, seed 1), the text model (seed 0, fp32 on the CPU) and `models/fusion.json` (T_sound 0.814, T_text 1.009, w_sound 0.75).
+
+- **Results table** (`results/results_table.md`), weighted-F1 as the seed mean ± sd, with the 95% bootstrap interval of the seed mean:
+
+  | Row | Condition | Weighted-F1 | 95% CI |
+  |---|---|---:|---|
+  | R0 | Majority (neutral) | 31.3 | 29.4–33.2 |
+  | R1 | Sound only | 52.3 ± 0.4 | 50.3–54.1 |
+  | R2 | Sound, plus acted corpora | 50.9 ± 0.3 | 49.1–52.6 |
+  | R3 | Sound, 10 s window | 51.4 ± 0.9 | 49.4–53.1 |
+  | R4 | Text, real transcripts | 61.5 ± 0.8 | 59.8–63.2 |
+  | R5 | Text, Whisper transcripts | 52.3 ± 0.5 | 50.5–54.0 |
+  | R6 | Text trained on real only, Whisper | 52.1 ± 1.5 | 50.1–53.9 |
+  | R7 | Fused, Whisper | 54.2 ± 0.2 | 52.3–56.0 |
+  | R8 | Fused, real transcripts | 57.9 ± 0.9 | 56.0–59.7 |
+  | R9 | Deployed system (one run) | 54.5 | 52.4–56.4 |
+
+- **The fusion gain is real but small.** Measured as a paired bootstrap of the seed means on the same resampled utterances:
+  - R7 − R5 is +1.9 points [+0.6, +3.3].
+  - R7 − R1 is +1.9 [+1.2, +2.5].
+
+  This is inside the +0.5 to +2.5 typically reported on MELD (§10.9). The branches give the same label on 64% of test clips.
+- **Ablations, none of which helps on MELD test:**
+  - Adding CREMA-D and RAVDESS to the sound training costs 1.4 points (R2 against R1). The acted corpora are a different domain, and RAVDESS calm became neutral.
+  - The 10 s window costs 0.9 points for sound (R3 against R1). This agrees with the window chosen by WER.
+  - Training the text model on real transcripts only (R6) is 0.2 points below training it on both, within the noise (sd 1.5).
+- **Whisper errors cost text 9.2 points** (R4 61.5 against R5 52.3) and fused 3.7 points (R8 57.9 against R7 54.2). The sound branch makes up part of what the transcripts lose.
+- **The sound branch scores above the published range.** It gets 52.3 against the 40–46 expected in §10.9. Two likely reasons, not proven here:
+  - The Whisper encoder is a speech-recognition model, so its frames carry what was said as well as how it sounded.
+  - MELD's train and test splits share the six main Friends speakers, so the head can learn speaker-specific habits.
+
+  Both inflate MELD test scores relative to new voices. That matches the own-recordings result below, where the sound branch fell to 28.6% accuracy.
+- **Per class (fused, R9):**
+  - F1: neutral 70.9, surprise 48.8, joy 44.5, anger 42.2, sadness 26.6, fear 14.9, disgust 12.5.
+  - Neutral is the most common wrong answer for every class.
+  - Text finds sadness far better than sound (recall 32.2% against 14.4%).
+  - Written discussion: `results/error_analysis.md`.
+- **Disagreements:** 352 test clips (13.5%) are flagged. On those, the fused answer is right 44.0% of the time, against 58.9% on the rest.
+- **Calibration (AC-16):** fused test ECE is 9.51 before temperature scaling and 6.04 after (NLL 1.257 → 1.242). Sound goes 7.70 → 4.39 and text 2.42 → 1.98. The reliability diagram is `results/reliability.png`.
+- **Latency (AC-08, AC-09):** measured on mains power on the deployed system with fp32 text, 2 warm-up and 20 runs on the 5 s fixture.
+  - Median 1,590 ms, p90 1,644 ms.
+  - The Whisper encode is 1,180 ms of that, transcription 260 ms, decoding and VAD 122 ms, and text 28 ms.
+  - Peak memory 1.40 GB; loading takes 10.6 s.
+- **Own recordings (§10.6):** 28 acted clips, 4 per emotion. Accuracy is 28.6% for sound, 60.7% for text and 35.7% for fused (95% CI 17.9–53.6). Chance is 14.3%.
+  - The text branch transfers; the sound branch mostly answers neutral.
+  - Because w_sound is 0.75, the fused answer follows the weak sound branch and ends up 25 points below text alone.
+  - With 28 clips the intervals are wide, but the direction is clear: on new voices, the app's fused answer is less reliable than its text branch.
+- **Chatbot (§10.7):** Gemini `gemini-3.5-flash` (the API reported serving `gemini-3.6-flash`), through the free API with default settings and the §10.7 instruction, has answered **27 of the 28** recordings so far. Both free-tier keys ran out of their 20-a-day quota on that model. The last clip, surprise_04, is sent after the quota resets, and the report is then regenerated as complete.
+
+  On the same 27 clips:
+
+  | System | Accuracy | 95% CI | Weighted-F1 | Median latency |
+  |---|---:|---|---:|---:|
+  | Ours, fused | 37.0 | 18.5–55.6 | 30.7 | 1.60 s on the CPU, offline |
+  | Gemini | 85.2 | 70.4–96.3 | 84.7 | 15.5 s online |
+
+  - Gemini missed 4 clips (anger_03 → sadness, disgust_03 → fear, disgust_04 → anger, fear_04 → sadness) and never answered outside the labels.
+  - On these acted, clearly worded clips, Gemini is far more accurate than our system, and even than our text branch alone (60.7%).
+  - Its latency includes busy-service retries; the slowest answer took 105 s.
+  - It sends the audio to Google, and the free tier may use it for training. Our system is offline, private and about 10 times faster.
+- **Acceptance criteria:**
+
+  | AC | Criterion | Measured | Verdict |
+  |---|---|---|---|
+  | AC-01 | MELD joins | 9,988 / 1,108 / 2,610 (P2) | pass |
+  | AC-02 | WER for dev and test in both windows; window by the §8.1 rule | dev 31.88 / 26.03, test 43.68 / 33.38; case a, gap +5.85 > 2.0 → 30 s | pass |
+  | AC-03 | R1 ≥ 40.0 | 52.3 | pass |
+  | AC-04 | R4 ≥ 58.0 | 61.5 | pass |
+  | AC-05 | R7 ≥ 52.0 and ≥ R5 | 54.2 against R5 52.3 (gain +1.9 [+0.6, +3.3]) | pass |
+  | AC-06 | Every model row > 31.3 | lowest R2 50.9 | pass |
+  | AC-07 | CPU parity ≤ 1.5 on dev | +0.63 / +0.21 / −0.93 | pass |
+  | AC-08 | Median ≤ 2.0 s per 5 s clip (stretch ≤ 1.2 s) | 1.59 s | pass; stretch not met |
+  | AC-09 | Peak memory ≤ 2.5 GB | 1.40 GB | pass |
+  | AC-10 | Own recordings and chatbot on the same clips | own: 28 clips, fused 35.7% accuracy; chatbot: Gemini on the same clips, 27 of 28 so far (85.2% against our 37.0%) | pass, provisional until the last clip is in |
+  | AC-16 | Fused ECE before and after, with the diagram | 9.51 → 6.04 | pass (reported) |
+
+  AC-11 to AC-15 and AC-17 belong to P8–P10.

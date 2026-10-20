@@ -423,7 +423,32 @@ def results_rows(params, text_cpu, pred_dir=None, parity_json=None):
     return out
 
 
-def results_table_markdown(rows, params):
+def fusion_gains(params, pred_dir=None, seeds=config.SEEDS):
+    """The fusion gain on test (§10.9, AC-05): R7 minus R5 and R7 minus R1 as differences
+    of seed means, each with a paired bootstrap 95% interval. The text files list the
+    clips in another order, so every row is put in the sound files' order first."""
+    ids = fusion.load_predictions(kaggle_pred("sound", "main", seeds[0], "test", None, pred_dir))[0]
+
+    def labels(branch, run, kind):
+        out = []
+        for s in seeds:
+            f_ids, _, p = fusion.load_predictions(kaggle_pred(branch, run, s, "test", kind, pred_dir))
+            pos = {i: k for k, i in enumerate(f_ids)}
+            out.append(p[[pos[i] for i in ids]].argmax(1))
+        return out
+
+    y, fused = row_probs("R7", "test", params, pred_dir=pred_dir, seeds=seeds)
+    if len(y) != len(ids):
+        raise ValueError("R7 doesn't cover every test clip")
+    r7 = [p.argmax(1) for p in fused]
+    out = {}
+    for name, other in (("R7-R5", labels("text", "main", "whisper")), ("R7-R1", labels("sound", "main", None))):
+        g, lo, hi = metrics.paired_bootstrap_gain(y, r7, other)
+        out[name] = {"gain": round(g, 2), "ci_low": round(lo, 2), "ci_high": round(hi, 2)}
+    return out
+
+
+def results_table_markdown(rows, params, gains=None):
     lines = ["# MELD test results (§10.2)", "",
              f"MELD test, {rows[0]['n']} utterances. Weighted-F1 is the headline (points). Trained rows "
              "show the mean ± sd over seeds 0, 1 and 2; the 95% interval is a bootstrap of the seed "
@@ -453,6 +478,11 @@ def results_table_markdown(rows, params):
               "the laptop (§7.4), so the remaining CPU difference (int8 Whisper features and transcripts) "
               "is measured on dev by the parity check (`parity.md`); R9's dev value is that check's "
               "end-to-end CPU result."]
+    if gains:
+        lines.append("- Fusion gain on test, as a difference of seed means with a paired bootstrap 95% "
+                     "interval (both rows scored on the same resampled utterances): "
+                     + "; ".join(f"{k.replace('-', ' − ')} {g['gain']:+.1f} [{g['ci_low']:+.1f}, {g['ci_high']:+.1f}]"
+                                 for k, g in gains.items()) + ".")
     return "\n".join(lines) + "\n"
 
 
@@ -622,6 +652,17 @@ def error_analysis(parts, transcripts_csv, n=10, seed=0):
     return "\n".join(lines) + "\n", {"flagged": int(flag.sum()), "flagged_pct": round(pct(flag), 1)}
 
 
+DISCUSSION_HEADING = "## Discussion"
+
+
+def keep_discussion(path, new_md):
+    """`new_md` plus the hand-written "## Discussion" section of the report already at
+    `path`, so regenerating the tables doesn't erase the written analysis."""
+    old = Path(path).read_text(encoding="utf-8") if Path(path).exists() else ""
+    i = old.find(DISCUSSION_HEADING)
+    return new_md if i < 0 else new_md.rstrip("\n") + "\n\n" + old[i:]
+
+
 def own_recordings_eval(analyzer, manifest, out_csv=OWN_EVAL_CSV, log=print):
     """Run the deployed system on every own recording (§10.6). Per-clip rows, transcripts
     included, go to the git-ignored data/own_eval.csv."""
@@ -681,11 +722,13 @@ def own_markdown(df, models):
                      f"{mark(r.fused, r.fused_conf)} | {'yes' if r.disagreement else ''} |")
     heard = df[df["fused"].isin(config.LABELS)]
     cm = metrics.confusion(heard["label"].map(config.LABEL_TO_ID), heard["fused"].map(config.LABEL_TO_ID))
+    counts = df["label"].value_counts()
+    per_emotion = str(counts.min()) if counts.min() == counts.max() else f"{counts.min()}–{counts.max()}"
     lines += ["", "Bold = correct. Fused confusion (rows true, columns predicted, order "
               f"{', '.join(config.LABELS)}):", "", "```"] + [" ".join(f"{v:2d}" for v in row) for row in cm] + ["```", "",
               "**Caveat: a small sample.** "
-              f"{len(df)} clips ({df['label'].value_counts().min()}–{df['label'].value_counts().max()} per emotion) "
-              "from a few speakers, recorded on a phone and acted on purpose. One clip moves accuracy by "
+              f"{len(df)} clips ({per_emotion} per emotion), acted on purpose rather than spontaneous "
+              "speech like MELD's. One clip moves accuracy by "
               f"{100 / len(df):.1f} points, and the bootstrap interval above is wide. These numbers show whether the "
               "system transfers to new voices at all; they don't estimate its accuracy precisely."]
     return "\n".join(lines) + "\n", sc
@@ -725,7 +768,8 @@ def main(argv=None):
         t_cpu = text_cpu(text_model.TextClassifier(config.text_model_dirs()), "test")
         rows = results_rows(params, t_cpu, parity_json=out / "parity.json")
         pd.DataFrame(rows).to_csv(out / "results_table.csv", index=False)
-        (out / "results_table.md").write_text(results_table_markdown(rows, params), encoding="utf-8")
+        gains = fusion_gains(params)
+        (out / "results_table.md").write_text(results_table_markdown(rows, params, gains), encoding="utf-8")
         parts = deployed_test_parts(params, t_cpu)
         (out / "per_class.md").write_text(per_class_report(parts, out), encoding="utf-8")
         decision = json.loads((config.MODELS_DIR / "decision.json").read_text())
@@ -733,11 +777,12 @@ def main(argv=None):
         cal_md, cal = calibration_report(parts, params, out)
         (out / "calibration.md").write_text(cal_md, encoding="utf-8")
         err_md, err = error_analysis(parts, KAGGLE_DIR / "transcripts" / f"test_{config.WINDOW_S}s.csv")
-        (out / "error_analysis.md").write_text(err_md, encoding="utf-8")
+        (out / "error_analysis.md").write_text(keep_discussion(out / "error_analysis.md", err_md),
+                                               encoding="utf-8")
         for r in rows:
             print(f"{r['row']:<3} {r['weighted_f1_mean']:6.2f} ± {r['weighted_f1_sd']:.2f}  "
                   f"[{r['ci_low']:.1f}, {r['ci_high']:.1f}]  {r['condition']}")
-        print(f"calibration {cal}; disagreements {err}")
+        print(f"fusion gains {gains}; calibration {cal}; disagreements {err}")
         return
     if args.cmd == "own":
         manifest, skipped = data.own_manifest()

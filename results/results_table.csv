@@ -1,0 +1,11 @@
+row,condition,n_seeds,n,weighted_f1_mean,weighted_f1_sd,macro_f1_mean,macro_f1_sd,accuracy_mean,accuracy_sd,ci_low,ci_high,seeds_weighted_f1,dev_weighted_f1_mean,dev_weighted_f1_sd
+R0,Majority baseline (always neutral),1,2610,31.27,0.0,9.28,0.0,48.12,0.0,29.37,33.25,31.27,,
+R1,Sound only (main),3,2610,52.34,0.39,35.16,0.47,54.13,0.5,50.32,54.1,52.07 52.17 52.80,52.34,0.8
+R2,"Sound only, ablation A (plus acted corpora)",3,2610,50.91,0.26,31.47,0.47,53.49,0.79,49.09,52.61,50.64 51.17 50.92,51.61,0.83
+R3,"Sound only, ablation W (other window)",3,2610,51.36,0.95,33.85,0.96,52.95,1.53,49.41,53.14,52.46 50.73 50.89,51.23,0.42
+R4,Text on real transcripts,3,2610,61.48,0.8,44.64,1.15,61.51,1.32,59.76,63.19,62.19 61.63 60.61,59.02,2.0
+R5,Text on Whisper transcripts,3,2610,52.33,0.46,36.33,1.2,53.44,1.2,50.45,53.97,52.64 52.55 51.80,50.05,0.22
+R6,"Text, ablation T (trained on real only), Whisper transcripts",3,2610,52.11,1.53,36.24,1.38,53.58,1.94,50.15,53.89,52.62 50.39 53.31,49.89,0.69
+R7,"Fused, Whisper transcripts (sound seed i with text seed i)",3,2610,54.21,0.22,37.31,0.43,56.26,0.26,52.27,55.97,54.00 54.45 54.18,54.51,0.81
+R8,"Fused, real transcripts (same pairing)",3,2610,57.92,0.92,40.85,0.88,59.58,0.95,56.01,59.71,58.98 57.41 57.37,57.12,1.21
+R9,"Deployed system, Whisper transcripts",1,2610,54.52,0.0,37.19,0.0,56.9,0.0,52.4,56.44,54.52,54.73,0.0
