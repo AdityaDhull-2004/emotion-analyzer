@@ -200,7 +200,7 @@ def own_manifest(root=None):
     rows, skipped = [], []
     if root.exists():
         for p in sorted(root.iterdir()):
-            if not p.is_file() or p.name == config.DEMO_OK_FILE.name:
+            if not p.is_file():
                 continue
             m = OWN_FILE_RE.match(p.name)
             if not m or m.group(1).lower() not in config.LABEL_TO_ID:
@@ -210,45 +210,6 @@ def own_manifest(root=None):
                          "source": "own"})
     df = _with_label_ids(pd.DataFrame(rows, columns=["id", "path", "label", "speaker", "source"]))
     return df, skipped
-
-
-def read_demo_ok(path=None, own_root=None):
-    """File names listed in data/own/demo_ok.txt, one per line ('#' starts a comment).
-    Raises FileNotFoundError if the list is missing, and ValueError for names that
-    aren't valid own recordings."""
-    path = Path(path or config.DEMO_OK_FILE)
-    own_root = Path(own_root or path.parent)
-    names = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        name = line.split("#", 1)[0].strip()
-        if name:
-            names.append(name)
-    bad = [n for n in names if not OWN_FILE_RE.match(n) or not (own_root / n).is_file()]
-    if bad:
-        raise ValueError(f"demo_ok.txt lists files that aren't own recordings: {bad}")
-    return names
-
-
-def copy_demo_samples(dest=None, demo_ok=None):
-    """Copy the clips listed in data/own/demo_ok.txt into the git-ignored app/static/samples/,
-    with an index.json of file names and labels for the UI (§5.4, F12). Only own
-    recordings can be listed, so MELD audio can never become a demo sample."""
-    import json
-    import shutil
-
-    demo_ok = Path(demo_ok or config.DEMO_OK_FILE)
-    dest = Path(dest or config.SAMPLES_DIR)
-    names = read_demo_ok(demo_ok)
-    dest.mkdir(parents=True, exist_ok=True)
-    for old in dest.iterdir():
-        if old.is_file():
-            old.unlink()
-    index = []
-    for name in names:
-        shutil.copy2(demo_ok.parent / name, dest / name)
-        index.append({"file": name, "label": OWN_FILE_RE.match(name).group(1).lower()})
-    (dest / "index.json").write_text(json.dumps(index, indent=2))
-    return index
 
 
 def download_meld_meta(dest=None):

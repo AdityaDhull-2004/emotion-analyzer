@@ -82,3 +82,34 @@ Known problems and errors, newest at the bottom of each phase.
   - passing `null` to `replaceChildren` printed "null" in the right/wrong banner.
 - Headless Chrome won't make a window narrower than about 500 px, and a 390 px iframe stalled the page's report request. Phone width was checked with DevTools device emulation instead.
 - A Bash here-document mangled `"\n"` in a Python edit script again (the chatbot JSON edit). Fixed by writing the script with the Write tool.
+
+## P9 Deployment
+
+- **The campus Wi-Fi (`iiscwlan`) is a Public network to Windows**, and campus networks often isolate devices from each other. The firewall rule and the switch to Private are the user's administrator steps. If the phone still can't connect, the README's hotspot fallback or the tunnel applies.
+- **`python.exe` already has inbound Allow rules on the Public profile** (for the base Python 3.12 that the venv's launcher runs, and for Miniconda), left from earlier Windows prompts. So any Python server on this laptop accepts connections on public networks. Not changed: it predates the project, and only the user can review it.
+- **Checks from the laptop can't prove the firewall lets a phone in.** Windows doesn't filter a machine's traffic to its own LAN address, so the smoke checks through `https://10.217.15.89:8443` test the server, the binding and the certificate, not the firewall. Only the phone test does that.
+- **The first `offline_check.ps1` would have passed with the network on.** It tested the internet with ping, which the campus network blocks. Now it makes HTTPS requests to huggingface.co and 1.1.1.1, and a dry run with Wi-Fi on reports "NOT VALID".
+  - The same dry run caught a second bug: Windows PowerShell 5.1 doesn't unroll a parsed JSON array, so the script fell back to the speech fixture instead of a demo clip.
+- **A near-tie can flip between server restarts.** Within one running server, the same clip gives the same probabilities every time (5 repeats). But `disgust_01` is a near-tie (anger 0.218, surprise 0.217), and its fused answer was surprise in one server process and anger in another. The Results page claimed "the same clip always gets the same answer"; it now says a clip sent again to the running server gets the same answer.
+- Windows PowerShell 5.1 turns a native program's stderr into errors when output is redirected, which would stop the scripts under `$ErrorActionPreference = "Stop"`. The scripts use `Continue` and check exit codes. `$profile` is a built-in variable and was renamed in `serve.ps1`.
+- A Bash here-document mangled `"\n"` in the access-log code again (a syntax error the tests caught). Fixed with the Edit tool.
+- Processing times during the P9 checks were 2.6–2.9 s per clip, against the 1.65 s benchmark. This is the same slow-CPU state recorded in P8, with about 1.3 GB of memory free during the checks.
+- **The phone's tunnel test isn't in the log.** The user reported the tunnel link working on mobile data, but none of the phone's requests reached the tunnel.
+  - `logs/server.log` has no request from the phone with `cf_ip`.
+  - cloudflared's own metrics counted 33 proxied requests with no errors. That is exactly the 33 `cf_ip` lines from the P9 checks (curl and headless Chrome).
+  - The phone's second session (22:26–22:27: a demo click, then Run all demos) came straight over the Wi-Fi, in the page that was already open, with no page load. A likely cause: Android stays on Wi-Fi when mobile data is switched on, so that open tab was still the LAN page.
+  - To redo: switch the phone's Wi-Fi off and open a new tunnel address. The quick tunnel's address changes on every run.
+- The campus Wi-Fi turned out not to isolate devices: once the user set it to Private, the phone reached the laptop directly. The hotspot fallback wasn't needed.
+
+## P9, spec v1.6: no demo clips
+
+- **The user's demo clips were public while the tunnel ran** (22:05–22:30). Anyone with the tunnel address could have played the 7 recordings in `app/static/samples/`. The user removed the demo clips from the page (v1.6).
+  - Nobody else fetched them. The access log saw only four client addresses: the phone, the laptop's LAN address, localhost, and the campus address of my own tunnel checks.
+  - All 24 clip downloads were the P9 checks or the phone's demo run.
+  - cloudflared's own counter (33 requests) matches the 33 tunnel lines, all from the checks.
+- The clips were never committed (`app/static/samples/` was git-ignored, and the repository has no remote), so they aren't in the git history either.
+- `data/own/demo_ok.txt` is no longer read. If it stays, `evaluate own` lists it among the skipped files.
+- `results/own_recordings.md`, `results/chatbot.md` and `results/chatbot_raw.csv` list each own recording by file name (emotion and number) with its true label and the predictions. They hold no audio, transcripts or speaker details, and the web page doesn't use them (it reads the `.json` aggregates). Raised with the user, not changed.
+- Two slips while making the change, both caught before the tests:
+  - a shell escape turned `\f` into a form feed in a README path;
+  - PowerShell read `"$got:"` as a scoped variable, now `${got}`.

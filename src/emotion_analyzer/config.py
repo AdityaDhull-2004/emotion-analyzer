@@ -26,9 +26,7 @@ KAGGLE_OUT_DIR = DATA_DIR / "kaggle"
 MODELS_DIR = ROOT / "models"
 RESULTS_DIR = ROOT / "results"
 LOGS_DIR = ROOT / "logs"
-SAMPLES_DIR = ROOT / "app" / "static" / "samples"
 FIXTURES_DIR = ROOT / "tests" / "fixtures"
-DEMO_OK_FILE = OWN_DIR / "demo_ok.txt"
 
 # Audio input limits (§5.1) and segmentation (§5.2)
 SAMPLE_RATE = 16000

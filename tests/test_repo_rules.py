@@ -3,8 +3,7 @@
 from emotion_analyzer import config
 
 REQUIRED_IGNORES = [
-    "data/", "models/", "certs/", ".env", ".venv/", "kaggle/code/", "__pycache__/",
-    "app/static/samples/", "logs/",
+    "data/", "models/", "certs/", ".env", ".venv/", "kaggle/code/", "__pycache__/", "logs/",
 ]
 
 

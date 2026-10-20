@@ -155,6 +155,20 @@ class Analyzer:
         return response
 
 
+def missing_models():
+    """What the deployed system needs that isn't on disk (§12): empty when the app can start,
+    even offline. The Whisper weights live in the Hugging Face cache, not in models/."""
+    need = [config.SOUND_HEAD_PATH, config.FUSION_PATH, *(d / "model.safetensors" for d in config.text_model_dirs())]
+    missing = [str(p.relative_to(config.ROOT)) for p in need if not p.exists()]
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(f"Systran/faster-whisper-{config.ASR_MODEL}", local_files_only=True)
+    except Exception:
+        missing.append(f"faster-whisper {config.ASR_MODEL} in the Hugging Face cache (downloaded on the first start, online)")
+    return missing
+
+
 def load_analyzer(text_seeds=None, window_s=None, text_precision=None):
     """The deployed system from models/ (§8): small.en int8 in the decided window, the
     sound head, the text model (or the ensemble of `text_seeds`) in the configured

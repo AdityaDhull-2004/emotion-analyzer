@@ -53,21 +53,6 @@
             <p id="status" class="status" role="status" aria-live="polite"></p>
           </section>
 
-          <section id="samples" class="card" hidden aria-labelledby="samples-title">
-            <div class="card-head">
-              <h2 id="samples-title">Demo clips</h2>
-              <button id="run-all" class="button primary" type="button">▶ Run all demos</button>
-            </div>
-            <p class="note">Recordings made for this project, shared with the speakers' consent. Each shows its true label.</p>
-            <div id="sample-buttons" class="sample-grid"></div>
-            <label class="check"><input id="play-demos" type="checkbox" checked> Play each clip aloud during Run all demos</label>
-          </section>
-
-          <section id="scoreboard-card" class="card scoreboard" hidden aria-labelledby="scoreboard-title">
-            <h2 id="scoreboard-title">🏁 Scoreboard</h2>
-            <div id="scoreboard"></div>
-          </section>
-
           <section id="history-card" class="card" hidden aria-labelledby="history-title">
             <div class="card-head">
               <h2 id="history-title">This session</h2>
@@ -81,10 +66,9 @@
         <div class="col">
           <div id="placeholder" class="card placeholder">
             <p class="placeholder-emojis" aria-hidden="true">😠 🤢 😨 😄 😐 😢 😲</p>
-            <p>Record, upload or pick a demo clip, and the result appears here.</p>
+            <p>Record or upload a clip, and the result appears here.</p>
           </div>
           <section id="results" class="results" hidden aria-live="polite">
-            <div id="verdict" class="verdict" hidden></div>
             <div id="banner" class="banner" role="note" hidden></div>
             <section class="card result">
               <h2>Emotion</h2>

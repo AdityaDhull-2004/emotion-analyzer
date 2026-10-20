@@ -1,6 +1,6 @@
 // Emotion Analyzer web UI (spec §5.4, v1.5). Three tabs:
-//   Try it        record (level meter, timer, Space), upload or drop a file, demo clips with
-//                 their true labels and Run all demos, and this session's history;
+//   Try it        record (level meter, timer, Space), upload or drop a file, and this session's
+//                 history. The server serves no audio, so there are no demo clips (v1.6);
 //   How it works  the pipeline diagram with the last analysis's stage timings;
 //   Results       built from GET /api/report, the aggregates in results/ (§5.3).
 // Plain JavaScript with no libraries, so the page works offline.
@@ -19,7 +19,6 @@ const TABS = ["try", "how", "results"];
 
 const $ = (id) => document.getElementById(id);
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Builds an element. Strings become text nodes, so nothing is ever parsed as HTML.
 function h(tag, props = {}, ...children) {
@@ -62,10 +61,6 @@ const pct = (x) => `${Math.round(100 * x)}%`;
 const fix = (x, d = 1) => Number(x).toFixed(d);
 const secs = (ms) => `${(ms / 1000).toFixed(2)} s`;
 const signed = (x, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}`;
-const median = (xs) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0;
-};
 
 // localStorage can be missing or throw (private windows, blocked storage): it only remembers the theme.
 const store = {
@@ -131,8 +126,6 @@ showTab(window.location.hash.slice(1));
 
 let busy = false;        // an analysis is running
 let rec = null;          // the recording in progress
-let demoRun = null;      // Run all demos in progress: {stop}
-let samples = [];        // demo clips from /static/samples/index.json
 const entries = [];      // this session's analyses, newest first
 let shownId = null;
 let nextId = 1;
@@ -140,17 +133,12 @@ let looseUrl = null;     // object URL of audio whose analysis failed (not in th
 const canRecord = Boolean(window.isSecureContext && navigator.mediaDevices && window.MediaRecorder);
 
 function refreshControls() {
-  const blocked = busy || Boolean(rec) || Boolean(demoRun);
-  $("record").disabled = !canRecord || busy || Boolean(demoRun);
+  const blocked = busy || Boolean(rec);
+  $("record").disabled = !canRecord || busy;
   $("upload").disabled = blocked;
   document.querySelector('label[for="upload"]').classList.toggle("disabled", blocked);
-  for (const s of samples) s.button.disabled = blocked;
-  const runAll = $("run-all");
-  runAll.disabled = !demoRun && blocked;
-  runAll.textContent = demoRun ? "■ Stop" : "▶ Run all demos";
-  runAll.classList.toggle("stop", Boolean(demoRun));
-  for (const b of document.querySelectorAll(".history-item")) b.disabled = busy || Boolean(demoRun) || Boolean(rec);
-  $("history-clear").disabled = Boolean(demoRun) || busy;
+  for (const b of document.querySelectorAll(".history-item")) b.disabled = blocked;
+  $("history-clear").disabled = busy;
   document.body.classList.toggle("busy", busy);
 }
 
@@ -165,34 +153,13 @@ function setPlayer(url) {
   player.hidden = false;
 }
 
-// Plays the clip in the page's player and resolves when it ends (or can't play).
-function playClip(url) {
-  const player = $("player");
-  setPlayer(url);
-  return new Promise((resolve) => {
-    let timeout = null;
-    const done = () => {
-      player.removeEventListener("ended", done);
-      player.removeEventListener("error", done);
-      player.removeEventListener("pause", done);
-      clearTimeout(timeout);
-      resolve();
-    };
-    player.addEventListener("ended", done);
-    player.addEventListener("error", done);
-    timeout = setTimeout(done, 30000);
-    player.currentTime = 0;
-    player.play().then(() => player.addEventListener("pause", done)).catch(done);
-  });
-}
-
 // --- Analysis ------------------------------------------------------------------------------
 
 async function analyze(blob, filename, meta = {}) {
   if (busy) return null;
   busy = true;
   refreshControls();
-  status(meta.statusText || "Analysing…");
+  status("Analysing…");
   if (looseUrl) URL.revokeObjectURL(looseUrl);
   const url = URL.createObjectURL(blob);
   looseUrl = url;
@@ -204,14 +171,8 @@ async function analyze(blob, filename, meta = {}) {
       const body = await res.json().catch(() => ({error: `HTTP ${res.status}`, detail: ""}));
       return {res, body, ms: performance.now() - started};
     });
-    let out;
-    if (meta.play) {
-      status(`${meta.statusText || "Analysing"}: playing the clip…`);
-      [out] = await Promise.all([request, playClip(url)]);
-    } else {
-      setPlayer(url);
-      out = await request;
-    }
+    setPlayer(url);
+    const out = await request;
     if (!out.res.ok) {
       status(`${out.body.error}${out.body.detail ? ": " + out.body.detail : ""}`, true);
       return null;
@@ -220,8 +181,7 @@ async function analyze(blob, filename, meta = {}) {
     const r = out.body;
     const speech = Boolean(r.speech_detected && r.segments.length && r.overall);
     const entry = {id: nextId++, url, result: r, roundTripMs: out.ms, at: new Date(), source: meta.source || filename,
-                   trueLabel: meta.trueLabel || null, speech,
-                   right: Boolean(meta.trueLabel && speech && r.overall.label === meta.trueLabel)};
+                   speech};
     entries.unshift(entry);
     while (entries.length > MAX_HISTORY) URL.revokeObjectURL(entries.pop().url);
     status("");
@@ -283,11 +243,6 @@ function weighted(segments, key) {
   return {label, confidence: probs[label], probs};
 }
 
-function branchLabel(entry, key) {
-  if (!entry.speech) return null;
-  return key === "fused" ? entry.result.overall.label : weighted(entry.result.segments, key).label;
-}
-
 function render(entry) {
   const r = entry.result;
   const seg = r.segments;
@@ -307,16 +262,6 @@ function render(entry) {
   probBars("sound-bars", speech ? weighted(seg, "sound") : null);
   probBars("text-bars", speech ? weighted(seg, "text") : null);
   $("transcript").textContent = speech ? (seg.map((s) => s.transcript).join(" ").trim() || "(no words recognised)") : "—";
-
-  const verdict = $("verdict");
-  verdict.hidden = !entry.trueLabel;
-  if (entry.trueLabel) {
-    verdict.className = `verdict ${entry.right ? "right" : "wrong"}`;
-    verdict.replaceChildren();
-    append(verdict, [h("span", {class: "mark"}, entry.right ? "✓ Right" : "✗ Wrong"),
-                     h("span", {}, "True label ", emo(entry.trueLabel)),
-                     entry.right ? null : h("span", {}, "Predicted ", speech ? emo(label) : "no speech")]);
-  }
 
   const disagree = seg.filter((s) => s.disagreement);
   const banner = $("banner");
@@ -367,9 +312,7 @@ function renderHistory() {
     h("span", {class: "h-time"}, e.at.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"})),
     e.speech ? emo(r.overall.label) : h("span", {class: "emo"}, "🤫 no speech"),
     e.speech ? h("span", {class: "h-conf"}, pct(r.overall.confidence)) : null,
-    h("span", {class: "h-src"}, e.source),
-    e.trueLabel ? h("span", {class: `h-mark ${e.right ? "right" : "wrong"}`, title: e.right ? "right" : "wrong"},
-      e.right ? "✓" : "✗") : null));
+    h("span", {class: "h-src"}, e.source)));
   }));
   refreshControls();
 }
@@ -391,7 +334,7 @@ $("upload").addEventListener("change", (e) => {
 {
   let depth = 0;
   const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
-  const idle = () => !busy && !rec && !demoRun;
+  const idle = () => !busy && !rec;
   window.addEventListener("dragenter", (e) => {
     if (!hasFiles(e)) return;
     depth += 1;
@@ -465,7 +408,7 @@ function tick() {
 }
 
 async function startRecording() {
-  if (!canRecord || busy || rec || demoRun) return;
+  if (!canRecord || busy || rec) return;
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({audio: true});
@@ -537,111 +480,6 @@ if (!canRecord) {
   }, true);
   window.addEventListener("keyup", (e) => { if (applies(e)) e.preventDefault(); }, true);
 }
-
-// --- Demo clips and Run all demos --------------------------------------------------------------
-
-async function runSample(s, opts = {}) {
-  let blob;
-  try {
-    const res = await fetch(`/static/samples/${encodeURIComponent(s.file)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    blob = await res.blob();
-  } catch (err) {
-    status(`Couldn't load the demo clip: ${err.message}`, true);
-    return null;
-  }
-  const entry = await analyze(blob, s.file, {trueLabel: s.label, source: `demo: ${s.name}`, ...opts});
-  if (entry) {
-    s.button.classList.toggle("right", entry.right);
-    s.button.classList.toggle("wrong", !entry.right);
-    const mark = s.button.querySelector(".s-mark");
-    mark.textContent = entry.right ? "✓" : "✗";
-    mark.title = entry.right ? "right" : "wrong";
-  }
-  return entry;
-}
-
-async function runAllDemos() {
-  if (demoRun) {
-    demoRun.stop = true;
-    $("player").pause();
-    return;
-  }
-  if (busy || rec || !samples.length) return;
-  demoRun = {stop: false};
-  $("scoreboard-card").hidden = true;
-  refreshControls();
-  const done = [];
-  for (const [i, s] of samples.entries()) {
-    if (demoRun.stop) break;
-    s.button.classList.add("current");
-    const entry = await runSample(s, {play: $("play-demos").checked,
-                                      statusText: `Demo ${i + 1} of ${samples.length}: ${s.name}`});
-    s.button.classList.remove("current");
-    if (entry) done.push({s, entry});
-    if (!demoRun.stop && i < samples.length - 1) await sleep(1500);  // a moment to read the result
-  }
-  const stopped = demoRun.stop;
-  demoRun = null;
-  refreshControls();
-  if (stopped) status(`Stopped after ${done.length} of ${samples.length} clips.`);
-  scoreboard(done);
-}
-
-function scoreboard(done) {
-  const card = $("scoreboard-card");
-  card.hidden = !done.length;
-  if (!done.length) return;
-  const n = done.length;
-  const right = (key) => done.filter(({s, entry}) => branchLabel(entry, key) === s.label).length;
-  const cell = (entry, key, truth) => {
-    const label = branchLabel(entry, key);
-    return h("td", {class: label === truth ? "right" : "wrong"},
-      label ? emo(label) : "—", " ", h("span", {class: "mark"}, label === truth ? "✓" : "✗"));
-  };
-  const fused = right("fused");
-  $("scoreboard").replaceChildren(
-    h("p", {class: "score-big"}, h("strong", {}, `${fused} / ${n}`), ` right (${Math.round((100 * fused) / n)}%)`),
-    h("div", {class: "table-wrap"}, h("table", {class: "score-table"},
-      h("thead", {}, h("tr", {}, h("th", {}, "True"), ...Object.values(BRANCH).map((b) => h("th", {}, b)),
-                       h("th", {class: "num"}, "Time"))),
-      h("tbody", {}, done.map(({s, entry}) => h("tr", {}, h("td", {}, emo(s.label)),
-        ...Object.keys(BRANCH).map((k) => cell(entry, k, s.label)),
-        h("td", {class: "num"}, secs(entry.result.timing_ms.total))))),
-      h("tfoot", {}, h("tr", {}, h("th", {}, "Right"),
-        ...Object.keys(BRANCH).map((k) => h("th", {}, `${right(k)} / ${n}`)),
-        h("th", {class: "num"}, `median ${secs(median(done.map(({entry}) => entry.result.timing_ms.total)))}`))))),
-    h("p", {class: "note"}, "Each column is one model on its own; the fused answer is what the app shows."));
-  card.scrollIntoView({behavior: reducedMotion() ? "auto" : "smooth", block: "nearest"});
-}
-
-$("run-all").addEventListener("click", runAllDemos);
-
-fetch("/static/samples/index.json")
-  .then((r) => (r.ok ? r.json() : []))
-  .then((list) => {
-    const valid = list.filter((s) => LABELS.includes(s.label) && s.file);
-    if (!valid.length) return;
-    const count = {};
-    samples = valid.map((s) => {
-      count[s.label] = (count[s.label] || 0) + 1;
-      return {...s};
-    });
-    const seen = {};
-    for (const s of samples) {
-      seen[s.label] = (seen[s.label] || 0) + 1;
-      s.name = count[s.label] > 1 ? `${s.label} ${seen[s.label]}` : s.label;
-      s.button = h("button", {type: "button", class: `sample ${s.label}`, title: `True label: ${s.label}`,
-                              onclick: () => runSample(s)},
-        h("span", {class: "s-emoji", "aria-hidden": "true"}, EMOJI[s.label]),
-        h("span", {class: "s-label"}, s.name),
-        h("span", {class: "s-mark"}));
-    }
-    $("sample-buttons").replaceChildren(...samples.map((s) => s.button));
-    $("samples").hidden = false;
-    refreshControls();
-  })
-  .catch(() => {});
 
 // --- How it works ---------------------------------------------------------------------------------
 
@@ -1010,7 +848,7 @@ function canDo(rep) {
   }
   items.push(["💸", "Free and unlimited", "No API key, no quota. Gemini's free tier stopped after 20 requests a day per model" +
     (c && c.partial ? ", which is why the comparison is still partial." : " during the comparison.")]);
-  items.push(["🔁", "Repeatable", "The same clip always gets the same answer (fixed weights, greedy decoding), and every number on this page can be re-run from the repository."]);
+  items.push(["🔁", "Repeatable", "Fixed weights and greedy decoding: a clip sent again to the running server gets the same answer, and every number on this page can be re-run from the repository."]);
   return [h("ul", {class: "can-do"}, items.map(([i, title, text]) => h("li", {}, h("span", {class: "cd-icon", "aria-hidden": "true"}, i),
     h("div", {}, h("strong", {}, title), h("p", {}, text))))),
   c ? h("p", {class: "honest"}, h("strong", {}, "What the chatbot does better: "),

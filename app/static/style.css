@@ -12,9 +12,7 @@
   --accent: #4f46e5;
   --accent-soft: rgba(79, 70, 229, 0.12);
   --good: #14804a;
-  --good-soft: rgba(20, 128, 74, 0.12);
   --bad: #c02f2f;
-  --bad-soft: rgba(192, 47, 47, 0.12);
   --warn: #a15c00;
   --warn-soft: rgba(214, 140, 0, 0.16);
   --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 4px 14px rgba(20, 24, 40, 0.06);
@@ -51,9 +49,7 @@
     --accent: #8b85ff;
     --accent-soft: rgba(139, 133, 255, 0.16);
     --good: #4ade80;
-    --good-soft: rgba(74, 222, 128, 0.14);
     --bad: #f87171;
-    --bad-soft: rgba(248, 113, 113, 0.14);
     --warn: #fbbf24;
     --warn-soft: rgba(251, 191, 36, 0.14);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.3);
@@ -80,9 +76,7 @@
   --accent: #8b85ff;
   --accent-soft: rgba(139, 133, 255, 0.16);
   --good: #4ade80;
-  --good-soft: rgba(74, 222, 128, 0.14);
   --bad: #f87171;
-  --bad-soft: rgba(248, 113, 113, 0.14);
   --warn: #fbbf24;
   --warn-soft: rgba(251, 191, 36, 0.14);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.3);
@@ -173,11 +167,8 @@ main { padding: 1.2rem max(16px, 2vw) 2rem; max-width: 1600px; margin: 0 auto; }
   border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; font-weight: 600;
 }
 .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.button.primary.stop { background: var(--bad); border-color: var(--bad); }
 .button:disabled, .button.disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }
 .link-button { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0.2rem; font-weight: 600; }
-.check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.8rem; font-size: 0.9rem; cursor: pointer; }
-.check input { width: 1.1rem; height: 1.1rem; }
 .badge {
   display: inline-block; margin-left: 0.5rem; padding: 0.05rem 0.55rem; border-radius: 999px;
   background: var(--accent); color: #fff; font-size: 0.75rem; font-weight: 700; vertical-align: middle; white-space: nowrap;
@@ -228,23 +219,6 @@ body.busy .status:not(.error)::before {
   border: 3px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 
-.sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
-.sample {
-  display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.75rem; border-radius: 12px; cursor: pointer;
-  border: 2px solid var(--c); background: var(--c-soft); font-weight: 700; text-align: left;
-}
-.sample .s-emoji { font-size: 1.4rem; }
-.sample .s-label { flex: 1; }
-.sample .s-mark { font-weight: 900; }
-.sample.right .s-mark { color: var(--good); }
-.sample.wrong .s-mark { color: var(--bad); }
-.sample.current { box-shadow: 0 0 0 4px var(--accent); }
-
-.scoreboard .score-big { font-size: 1.5rem; margin: 0.2rem 0 0.6rem; }
-.scoreboard .score-big strong { font-size: 2.6rem; color: var(--accent); }
-.score-table td.right .mark { color: var(--good); font-weight: 900; }
-.score-table td.wrong .mark { color: var(--bad); font-weight: 900; }
-
 .history-list { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.4rem; max-height: 22rem; overflow-y: auto; }
 .history-item {
   width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.7rem; padding: 0.5rem 0.7rem;
@@ -254,25 +228,13 @@ body.busy .status:not(.error)::before {
 .h-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
 .h-conf { font-variant-numeric: tabular-nums; }
 .h-src { color: var(--muted); font-size: 0.85rem; flex: 1; min-width: 6rem; overflow-wrap: anywhere; }
-.h-mark { font-weight: 900; }
-.h-mark.right { color: var(--good); }
-.h-mark.wrong { color: var(--bad); }
 
 .placeholder { text-align: center; color: var(--muted); padding: 3rem 1rem; }
 .placeholder-emojis { font-size: 2.4rem; letter-spacing: 0.2em; margin: 0 0 0.6rem; }
 .results[hidden] { display: none; }
-.results, .scoreboard { scroll-margin-top: 9rem; }  /* clear of the sticky header */
+.results { scroll-margin-top: 9rem; }  /* clear of the sticky header */
 .results > * + * { margin-top: 1rem; }
 
-.verdict {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.2rem; padding: 0.8rem 1.1rem; border-radius: var(--radius);
-  font-size: 1.15rem; font-weight: 600; border: 2px solid;
-}
-.verdict.right { background: var(--good-soft); border-color: var(--good); }
-.verdict.wrong { background: var(--bad-soft); border-color: var(--bad); }
-.verdict .mark { font-weight: 900; font-size: 1.3rem; }
-.verdict.right .mark { color: var(--good); }
-.verdict.wrong .mark { color: var(--bad); }
 .banner {
   padding: 0.8rem 1.1rem; border-radius: var(--radius); background: var(--warn-soft);
   border: 2px solid var(--warn); font-size: 1.05rem;

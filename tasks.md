@@ -31,7 +31,7 @@ Then the build carries straight on to the next phase.
 - [x] F9 Temperatures and fusion weight fitted at the start of P6
 - [x] F10 WER wording corrected (about 3% on LibriSpeech test-clean, 14% on IEMOCAP, about 35% expected on MELD)
 - [x] F11 `pyproject.toml` and a versioned `.githooks/pre-commit`
-- [x] F12 Demo samples in the git-ignored `app/static/samples/`, chosen through `data/own/demo_ok.txt`
+- [x] F12 Demo samples in the git-ignored `app/static/samples/`, chosen through `data/own/demo_ok.txt` *(removed in v1.6)*
 - [x] F13 Wi-Fi isolation and network-profile risk, with the hotspot or tunnel fallback
 - [x] F14 Trial `/export` at the end of the first sitting; the converter is built against it
 - [x] F15 Gemini consent, noted in the README
@@ -51,14 +51,14 @@ Then the build carries straight on to the next phase.
 - [ ] **USER-ANYTIME** **Needed by P10:** at the end of the first sitting, run a trial `/export transcript-backup-1.md` (F14)
 - [x] **USER-ANYTIME** **Needed by P7:** record 30–50 clips of 3–8 s, with at least 4 per emotion and varied everyday sentences, into `data/own/{emotion}_{nn}.{ext}`. The speakers' consent covers sending the clips to Gemini (F15). *(28 clips, 4 per emotion, 3.5–6.7 s, M4A: two short of 30, noted in `issues.md`.)*
 - [x] **USER-ANYTIME** **Needed by P7:** copy `.env.example` to `.env` and add `GEMINI_API_KEY` (never paste it into the chat)
-- [x] **USER-ANYTIME** **Needed by P8:** list the clips whose speakers agreed to be demo samples in `data/own/demo_ok.txt`, one file name per line *(7 clips, one per emotion)*
+- [x] **USER-ANYTIME** **Needed by P8:** list the clips whose speakers agreed to be demo samples in `data/own/demo_ok.txt`, one file name per line *(7 clips, one per emotion; no longer used from v1.6)*
 
 ## P1 Scaffold
 
 - [x] `.gitignore`: the initial §13 entries (created with the plan commit)
-- [x] `.gitignore`: add `app/static/samples/` and `logs/`
+- [x] `.gitignore`: add `app/static/samples/` and `logs/` *(`app/static/samples/` removed in v1.6)*
 - [x] Folder tree from §13:
-  - `src/emotion_analyzer/`, `app/static/samples/`, `scripts/`, `tests/`, `tools/`, `results/`
+  - `src/emotion_analyzer/`, `app/static/samples/` (removed in v1.6), `scripts/`, `tests/`, `tools/`, `results/`
   - `data/meld/dev/`, `data/own/`, `data/kaggle/`, `models/`, `kaggle/code/`
 - [x] `.venv/` built with `py -3.12` (never the 3.14 `python` on PATH)
 - [x] `requirements.txt`: the local CPU environment, pinned (CPU-only torch, faster-whisper, transformers, FastAPI, uvicorn, jiwer, ftfy, scikit-learn and the rest)
@@ -83,7 +83,7 @@ Then the build carries straight on to the next phase.
   - count assertions;
   - unreadable clips, or clips under 0.1 s, dropped and logged in `issues.md`
 - [x] `data.py`: CREMA-D and RAVDESS loaders with the §7.2 label maps (RAVDESS from one folder tree, de-duplicated by file name, resampled to 16 kHz)
-- [x] `data.py`: own-recordings loader (label read from `{emotion}_{nn}.{ext}`) and the `demo_ok.txt` reader
+- [x] `data.py`: own-recordings loader (label read from `{emotion}_{nn}.{ext}`) and the `demo_ok.txt` reader *(the reader removed in v1.6)*
 - [x] `tests/test_data.py`:
   - the dev join gives 1,108 pairs, with `dia110_utt7` missing;
   - the label maps;
@@ -225,13 +225,13 @@ Then the build carries straight on to the next phase.
 
 ## P8 App
 
-- [x] Copy the clips listed in `data/own/demo_ok.txt` into `app/static/samples/`. If the file is missing, stop and remind. *(7 clips and index.json)*
+- [x] Copy the clips listed in `data/own/demo_ok.txt` into `app/static/samples/`. If the file is missing, stop and remind. *(7 clips and index.json; removed in v1.6)*
 - [x] `app/main.py`: FastAPI, with the models loaded once at start-up, `GET /`, `GET /api/health`, `POST /api/analyze`, and errors 400 / 413 / 422 in the §5.3 shape
 - [x] `app/static/index.html`, `app.js` and `style.css`, with:
   - record and upload;
   - the fused result card, and the "How it sounds" and "What was said" cards;
   - transcript, disagreement banner, and the timeline for recordings over 10 s;
-  - processing time, demo samples, and the About panel (citations and limitations);
+  - processing time, demo samples (removed in v1.6), and the About panel (citations and limitations);
   - a phone-width layout and no CDNs
 - [x] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Speech comes from the committed `tests/fixtures/` clips; silence, too short, too large and unsupported inputs are built in the test; no MELD audio, and no text-to-speech at run time. *(8 tests, including one slow test on the real models; all pass)*
 - [x] Start the app locally and give the user the link *(http://localhost:8443, HTTP until P9 adds the certificate)*
@@ -239,7 +239,7 @@ Then the build carries straight on to the next phase.
 - [x] `app/report.py` and `GET /api/report` (§5.3): assembled once at start-up from `results/` and `models/fusion.json`; aggregates only; missing sections marked unavailable
 - [x] Presentation-grade page (§5.4, v1.5), plain HTML, CSS and JavaScript, no CDNs:
   - three tabs: Try it, How it works, Results;
-  - Try it: level meter and timer while recording, Space to start and stop, drag and drop, animated bars, session history, demo clips with true labels and right/wrong marks, Run all demos with a scoreboard;
+  - Try it: level meter and timer while recording, Space to start and stop, drag and drop, animated bars, session history, demo clips with true labels and right/wrong marks, Run all demos with a scoreboard (the demo clips and the scoreboard removed in v1.6);
   - How it works: the SVG pipeline with the last analysis's stage timings and the deployed T and w, plus why two models are fused;
   - Results: R0–R9 with R9 highlighted, per-class F1, three confusion matrices, WER, calibration, latency against AC-08 and AC-09, own recordings, the chatbot comparison (partial while clips are missing), what it does that a chatbot can't, limitations;
   - one colour and emoji per emotion everywhere, light and dark themes, projector-sized text, phone width
@@ -250,20 +250,27 @@ Then the build carries straight on to the next phase.
 
 ## P9 Deployment
 
-- [ ] Port 8443 confirmed free → `insights.md`
-- [ ] `scripts/make_cert.py` → `certs/key.pem` and `certs/cert.pem` (SANs `localhost`, `127.0.0.1` and the current LAN IP)
-- [ ] `scripts/serve.ps1`: activates the venv, checks the models are present, starts uvicorn on 8443 with one worker, prints the LAN and localhost URLs
-- [ ] `scripts/tunnel.ps1`: the Cloudflare quick tunnel
-- [ ] `scripts/smoke.ps1`: calls `/api/health` and `/api/analyze` through the real LAN address
-- [ ] Access log in `app/main.py`: one line per request to `logs/server.log` (time, client IP, user agent, endpoint, status, processing time, `CF-Connecting-IP` when present)
-- [ ] `scripts/offline_check.ps1`: sets `HF_HUB_OFFLINE=1`, starts the server, analyses a demo clip on `https://localhost:8443`, writes `results/offline_check.txt`, then stops the server
-- [ ] `README.md`, the "Running in production" section, covering:
+- [x] Port 8443 confirmed free → `insights.md`
+- [x] `scripts/make_cert.py` → `certs/key.pem` and `certs/cert.pem` (SANs `localhost`, `127.0.0.1` and the current LAN IP)
+- [x] `scripts/serve.ps1`: activates the venv, checks the models are present, starts uvicorn on 8443 with one worker, prints the LAN and localhost URLs
+- [x] `scripts/tunnel.ps1`: the Cloudflare quick tunnel
+- [x] `scripts/smoke.ps1`: calls `/api/health` and `/api/analyze` through the real LAN address
+- [x] Access log in `app/main.py`: one line per request to `logs/server.log` (time, client IP, user agent, endpoint, status, processing time, `CF-Connecting-IP` when present)
+- [x] `scripts/offline_check.ps1`: sets `HF_HUB_OFFLINE=1`, starts the server, analyses a demo clip on `https://localhost:8443`, writes `results/offline_check.txt`, then stops the server *(a committed fixture instead of a demo clip from v1.6, below)*
+- [x] `README.md`, the "Running in production" section, covering:
   - the firewall line;
   - setting the Wi-Fi to Private;
   - the hotspot fallback (F13);
   - the working directory before every command
-- [ ] **USER** In an administrator PowerShell, add the inbound rule for TCP 8443 on the Private profile, and set the Wi-Fi network to Private
-- [ ] **USER** Open the app on your phone on the same Wi-Fi, accept the certificate warning once, then test upload and record. Also open the tunnel's `trycloudflare.com` address on mobile data.
+- [x] *(Spec v1.6, the user's request before the phone tests: anyone with the tunnel link could have played the recordings)* Stop the tunnel before anything else *(it was already stopped at 22:30, after the phone test; no cloudflared or server process was left)*
+- [x] Remove the demo clips from the page: the sample buttons, true labels and right/wrong marks, Run all demos and its scoreboard, and the code and styles that serve them
+- [x] Delete `app/static/samples/` and the step that copied the clips (`data.copy_demo_samples`, the `demo_ok.txt` reader and their config entries), and drop the `.gitignore` entry *(the 7 copied clips and `index.json`; the originals stay in `data/own/`)*
+- [x] No route serves audio or anything from `data/`: `/static/` serves only the page's HTML, CSS and JavaScript, and tests check it (AC-13) *(`PageFiles` in `app/main.py`; two new API tests)*
+- [ ] `scripts/offline_check.ps1` analyses a committed fixture from `tests/fixtures/`; `scripts/smoke.ps1` also checks that no audio file can be fetched
+- [x] README, tests and page text updated; the fast tests and the slow API test pass; commit *(68 fast tests and the slow API test pass)*
+- [ ] Restart the server and the tunnel, run the smoke check through both real addresses, confirm that no audio file can be fetched, and give the user the new tunnel link
+- [x] **USER** In an administrator PowerShell, add the inbound rule for TCP 8443 on the Private profile, and set the Wi-Fi network to Private *(2026-10-20: checked: `iiscwlan` is Private, and the rule is enabled: inbound, TCP 8443, Private, LocalSubnet)*
+- [ ] **USER** Open the app on your phone on the same Wi-Fi, accept the certificate warning once, then test upload and record. Also open the tunnel's `trycloudflare.com` address on mobile data. *(2026-10-20: the Wi-Fi part is confirmed in `logs/server.log`. The tunnel part isn't: none of the phone's requests reached the tunnel, and cloudflared counted only the 33 test requests. Redo it with the phone's Wi-Fi off and a new tunnel address.)*
 - [ ] **USER** Offline check, while this session is idle (the session itself needs the internet):
   1. Switch Wi-Fi off.
   2. Run `scripts/offline_check.ps1`.
@@ -278,7 +285,7 @@ Then the build carries straight on to the next phase.
 
 - [ ] `README.md` complete: install, run, train (via `KAGGLE.md`), deploy, the Gemini consent note (F15), citations (§18)
 - [ ] `specs.md` matches the build, with every change recorded in §20
-- [ ] `tests/test_repo_rules.py`: the AC-13 scan (the only audio tracked in git is `tests/fixtures/`; no MELD audio among the demo samples; no banned checkpoint in code or config)
+- [ ] `tests/test_repo_rules.py`: the AC-13 scan (the only audio tracked in git is `tests/fixtures/`; the app serves no audio files; no banned checkpoint in code or config)
 - [ ] Final full test run, including `slow` → `insights.md`
 - [ ] Fresh-clone walkthrough of the README (install, tests, serve) → `insights.md`
 - [ ] `tools/transcript_to_html.py`, built and tested against the trial export (F14), with the session's `.jsonl` log as the fallback source
@@ -286,6 +293,6 @@ Then the build carries straight on to the next phase.
 - [ ] **USER** Run `/export transcript.md` at the end of the session
 - [ ] `transcript.html` built from `transcript.md`: "Turn N" headings, each response in a collapsed block, the turn count checked against the user's messages; commit
 - **Done when:** AC-13 to AC-15 pass.
-  - AC-13: no MELD audio in git or in the demo samples, and no banned checkpoint anywhere in the code (a test scans the repository and config)
+  - AC-13: no MELD audio in git, no audio served by the app, and no banned checkpoint anywhere in the code (a test scans the repository and config)
   - AC-14: the README lets a new user install, run, train (via `KAGGLE.md`) and deploy from scratch (manual check)
   - AC-15: the transcript is exported and converted to `transcript.html`, with Turn N headings and collapsed responses

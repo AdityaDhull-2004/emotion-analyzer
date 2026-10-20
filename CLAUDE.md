@@ -64,7 +64,7 @@ Taken from `specs.md` §15 (v1.2). If this file and the spec disagree, the spec 
 
 ## Data, licences and secrets
 
-- Never commit MELD audio, and never use it as demo samples.
+- Never commit MELD audio. The app serves no audio files (§5.3).
 - Per-utterance transcripts and predictions stay in the git-ignored `data/kaggle/`. `results/` holds aggregates only.
 - Never use a banned checkpoint (§4.4), that is, any checkpoint already trained on MELD:
   - `j-hartmann/emotion-english-distilroberta-base`

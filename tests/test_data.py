@@ -113,36 +113,12 @@ def test_ravdess_label_map_and_dedup(tmp_path):
     assert got == expected
 
 
-def test_own_recordings_and_demo_list(tmp_path):
+def test_own_recordings(tmp_path):
     for name in ["anger_01.wav", "joy_02.m4a", "Surprise_03.webm", "notes.txt", "calm_01.wav"]:
         (tmp_path / name).write_bytes(b"x")
     df, skipped = data.own_manifest(tmp_path)
     assert sorted(df["label"]) == ["anger", "joy", "surprise"]
     assert sorted(skipped) == ["calm_01.wav", "notes.txt"]
-
-    demo = tmp_path / "demo_ok.txt"
-    demo.write_text("anger_01.wav\n# friend said no\n\njoy_02.m4a  # mine\n", encoding="utf-8")
-    assert data.read_demo_ok(demo) == ["anger_01.wav", "joy_02.m4a"]
-    demo.write_text("missing_09.wav\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        data.read_demo_ok(demo)
-
-
-def test_copy_demo_samples(tmp_path):
-    """§5.4, F12: only the listed own recordings reach the samples folder, with an index."""
-    import json
-
-    own, samples = tmp_path / "own", tmp_path / "samples"
-    for name in ["anger_01.wav", "sadness_03.wav"]:
-        _touch_wav(own / name)
-    (own / "joy_02.m4a").write_bytes(b"m4a")
-    (own / "demo_ok.txt").write_text("anger_01.wav\njoy_02.m4a\n", encoding="utf-8")
-    samples.mkdir()
-    (samples / "stale.wav").write_bytes(b"old")
-    index = data.copy_demo_samples(samples, own / "demo_ok.txt")
-    assert index == [{"file": "anger_01.wav", "label": "anger"}, {"file": "joy_02.m4a", "label": "joy"}]
-    assert sorted(p.name for p in samples.iterdir()) == ["anger_01.wav", "index.json", "joy_02.m4a"]
-    assert json.loads((samples / "index.json").read_text()) == index
 
 
 def test_class_weights():

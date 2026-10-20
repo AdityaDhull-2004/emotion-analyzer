@@ -297,3 +297,36 @@ All on MELD test (2,610 utterances) unless stated. The deployed system has the s
   - light and dark themes both render.
 - **Tests:** 66 fast tests pass (4 new in `test_api.py`: the report, missing or broken files, dropped per-utterance fields, the offline page), and the slow real-model API test passes. AC-11 still passes.
 - **The user tried the app locally (2026-10-20):** recording with Space, upload, drag and drop, the demo clips, Run all demos, the history, the theme button and the Results tab all work. P8 is done (AC-11 passes).
+
+## P9 Deployment
+
+- **Port 8443 was free**, with no listener before the server started. The laptop's LAN address on the campus Wi-Fi is 10.217.15.89.
+- **Certificate:** self-signed EC P-256, with SANs `localhost`, `127.0.0.1` and `10.217.15.89`, valid until 2027-10-20. `serve.ps1` renews it only when the LAN address changes or it nears expiry.
+- **Checked through the real addresses, not localhost:**
+  - `smoke.ps1` through `https://10.217.15.89:8443`, with the certificate checked against `certs/cert.pem`, passes: health, then analyze (joy 45% on the speech fixture). Without trusting the certificate, curl refuses the connection (exit 60), so the check is real.
+  - `smoke.ps1` through the quick tunnel (`https://….trycloudflare.com`, Cloudflare's own certificate) passes too.
+  - Every page asset (`/`, `app.js`, `style.css`, the demo clips and `/api/report`) returns 200 through both routes, with identical sizes.
+  - **Browser, through both routes**, in headless Chrome with a fake microphone: the demo click, drag and drop, history, Run all demos (fused 4/7) and Space-to-record all work with no script errors. Over the LAN, Chrome trusted only this certificate's key, like accepting the warning once. The page is a secure context there and the record button is enabled.
+- **Access log:** one JSON line per request in `logs/server.log`. LAN requests show the client address. Tunnel requests carry `cf_ip`, and uvicorn already reports the forwarded client address as `ip`.
+- **Offline check, dry run with the Wi-Fi on:** the server started with `HF_HUB_OFFLINE=1` in 12 s and analysed a demo clip (anger, right). The script correctly called the run "NOT VALID" because the internet was reachable. The real check is the user's, with the Wi-Fi off.
+- **Tests:** 67 fast tests pass (new: the access log).
+- **Firewall and network (USER):** checked after the user's administrator steps. `iiscwlan` is Private, and the rule "Emotion Analyzer (TCP 8443)" is enabled: inbound, TCP 8443, Private profile, LocalSubnet.
+- **Phone over Wi-Fi, the LAN part of AC-12: confirmed from `logs/server.log`.** The phone was an Android phone running Chrome 155 at its own Wi-Fi address. It made 28 requests between 22:20 and 22:27, all 200:
+  - the page load, `/api/report` and `/api/health`;
+  - 6 analyses that weren't demo clips, i.e. the user's uploads and recordings (the log can't tell the two apart, because both are `POST /api/analyze`);
+  - one demo click and Run all demos, 8 analyses in all.
+  - Server time per analysis was 1.47–1.70 s (median 1.58 s), back at the benchmark speed.
+- **Tunnel from the phone: not confirmed** (`issues.md`). The tunnel itself passed the smoke and browser checks from the laptop.
+- After the phone test, the tunnel and the server were stopped. Port 8443 is free, no server or cloudflared process is left, and the old tunnel address returns 530.
+
+## P9, spec v1.6: no demo clips
+
+- **The page has no demo clips any more.** The sample buttons, true labels, right/wrong marks, Run all demos and its scoreboard are gone, along with their code and styles. A live demo now uses the microphone or an uploaded file.
+- **No audio can be fetched from the server:**
+  - `app/static/` holds only `index.html`, `app.js` and `style.css`;
+  - `/static/` serves only `.html`, `.js` and `.css` (`PageFiles`), so even an audio file dropped into the folder gives 404;
+  - the routes are exactly `/`, `/api/health`, `/api/report`, `/api/analyze` and `/static`, and none reads `data/`.
+- **Tests:**
+  - New API tests: the old demo paths, `data/own/` and path tricks into it give 404 and never audio, and the page-file filter is checked with audio in a temporary folder.
+  - 68 fast tests and the slow API test pass.
+- **Offline check, dry run with the Wi-Fi on:** it now analyses the committed fixture `tests/fixtures/speech_short.wav`. The server started in 8.5 s and the fixture came out joy 45% in 1.7 s. The run was correctly called "NOT VALID" because the Wi-Fi was on.

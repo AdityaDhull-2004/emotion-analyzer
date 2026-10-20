@@ -1,6 +1,7 @@
 """API tests (spec §5.3, AC-11): normal clip, silence, long recording (segmented),
 unsupported format, too large, too short; and the read-only report behind the Results tab
-(aggregates only, missing files) and the offline page (§5.4).
+(aggregates only, missing files), the offline page (§5.4), and that no audio can be fetched
+(AC-13, v1.6).
 
 Speech comes from the committed text-to-speech fixtures; silence, too-short, too-large and
 unsupported inputs are built here. The fast tests run the real HTTP layer, decoding, limits,
@@ -14,10 +15,11 @@ import re
 import numpy as np
 import pytest
 import soundfile as sf
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import report
-from app.main import STATIC_DIR, create_app
+from app.main import STATIC_DIR, PageFiles, create_app
 from emotion_analyzer import config, fusion
 
 SHORT = config.FIXTURES_DIR / "speech_short.wav"
@@ -52,8 +54,13 @@ def _fake_analyzer():
 
 
 @pytest.fixture(scope="module")
-def client():
-    with TestClient(create_app(_fake_analyzer)) as c:
+def access_log(tmp_path_factory):
+    return tmp_path_factory.mktemp("logs") / "server.log"
+
+
+@pytest.fixture(scope="module")
+def client(access_log):
+    with TestClient(create_app(_fake_analyzer, access_log=access_log)) as c:
         yield c
 
 
@@ -194,7 +201,8 @@ def test_report_missing_and_broken_files(tmp_path):
     (tmp_path / "chatbot.json").write_text('{"model": "x"}', encoding="utf-8")  # well-formed, but no aggregates
     rep = report.build_report(tmp_path, tmp_path / "fusion.json")
     assert not rep["sections"]["wer"]["available"] and not rep["sections"]["chatbot"]["available"]
-    with TestClient(create_app(_fake_analyzer, lambda: report.build_report(tmp_path, tmp_path / "f.json"))) as c:
+    with TestClient(create_app(_fake_analyzer, lambda: report.build_report(tmp_path, tmp_path / "f.json"),
+                               access_log=tmp_path / "server.log")) as c:
         r = c.get("/api/report")
         assert r.status_code == 200 and not r.json()["sections"]["results_table"]["available"]
 
@@ -229,18 +237,61 @@ def test_page_is_offline(client):
         assert client.get(f"/static/{name}").status_code == 200
 
 
+# --- No audio served (§5.3, AC-13, v1.6) ----------------------------------------------------
+
+def test_no_audio_can_be_fetched(client):
+    """The page's three files are all app/static/ holds, the routes are the §5.3 ones, and the
+    old demo-clip paths, data/own/ and path tricks into it all give 404, never audio."""
+    assert sorted(p.name for p in STATIC_DIR.rglob("*") if p.is_file()) == ["app.js", "index.html", "style.css"]
+    assert sorted(getattr(r, "path", "") for r in client.app.routes) == [
+        "/", "/api/analyze", "/api/health", "/api/report", "/static"]
+    for path in ["/static/samples/index.json", "/static/samples/anger_01.m4a", "/samples/anger_01.m4a",
+                 "/data/own/anger_01.m4a", "/static/../data/own/anger_01.m4a",
+                 "/static/%2e%2e/%2e%2e/data/own/anger_01.m4a", "/static/..%2f..%2fdata%2fown%2fanger_01.m4a",
+                 "/static/../../tests/fixtures/speech_short.wav"]:
+        r = client.get(path)
+        assert r.status_code == 404, path
+        assert not r.headers.get("content-type", "").startswith("audio/"), path
+
+
+def test_static_serves_only_page_files(tmp_path):
+    """Even if an audio file landed in app/static/, /static/ wouldn't serve it."""
+    (tmp_path / "style.css").write_text("body {}", encoding="utf-8")
+    (tmp_path / "clip.wav").write_bytes(SHORT.read_bytes())
+    (tmp_path / "clip.m4a").write_bytes(b"m4a")
+    (tmp_path / "index.json").write_text("[]", encoding="utf-8")
+    app = FastAPI()
+    app.mount("/static", PageFiles(directory=tmp_path), name="static")
+    c = TestClient(app)
+    assert c.get("/static/style.css").status_code == 200
+    for name in ("clip.wav", "clip.m4a", "CLIP.WAV", "index.json", ""):
+        assert c.get(f"/static/{name}").status_code == 404, name
+
+
+# --- The access log (§12) ------------------------------------------------------------------
+
+def test_access_log(client, access_log):
+    """One JSON line per request, with Cloudflare's client address when the tunnel sends one."""
+    client.get("/api/health", headers={"user-agent": "PhoneBrowser/1.0"})
+    _post(client, "notes.txt", b"not audio")
+    client.get("/api/health", headers={"user-agent": "TunnelPhone/2.0", "cf-connecting-ip": "203.0.113.7"})
+    lines = [json.loads(line) for line in access_log.read_text(encoding="utf-8").splitlines()][-3:]
+    for line in lines:
+        assert set(line) >= {"time", "ip", "endpoint", "status", "ms", "ua"}
+        assert line["ms"] >= 0 and line["time"][:4].isdigit()
+    assert lines[0]["endpoint"] == "GET /api/health" and lines[0]["status"] == 200
+    assert lines[0]["ua"] == "PhoneBrowser/1.0" and "cf_ip" not in lines[0]
+    assert lines[1]["endpoint"] == "POST /api/analyze" and lines[1]["status"] == 400
+    assert lines[2]["cf_ip"] == "203.0.113.7"
+
+
 # --- The deployed models ------------------------------------------------------------------
 
-def _models_present():
-    return config.SOUND_HEAD_PATH.exists() and config.FUSION_PATH.exists() and all(
-        (d / "model.safetensors").exists() for d in config.text_model_dirs())
-
-
 @pytest.fixture(scope="module")
-def real_client():
-    if not _models_present():
+def real_client(tmp_path_factory):
+    if fusion.missing_models():
         pytest.skip("the deployed models aren't in models/ (Phase 6 copies them from the Kaggle outputs)")
-    with TestClient(create_app()) as c:
+    with TestClient(create_app(access_log=tmp_path_factory.mktemp("logs") / "server.log")) as c:
         yield c
 
 
