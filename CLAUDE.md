@@ -1,6 +1,6 @@
 # CLAUDE.md: working rules for emotion-analyzer
 
-Taken from `specs.md` §15 (v1.1). If this file and the spec disagree, the spec wins.
+Taken from `specs.md` §15 (v1.2). If this file and the spec disagree, the spec wins.
 
 ## Source of truth
 
@@ -33,6 +33,7 @@ Taken from `specs.md` §15 (v1.1). If this file and the spec disagree, the spec 
 - Tests are the acceptance criteria (§11). Every phase ends with tests that pass.
 - The git pre-commit hook (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`) runs the fast tests: under 60 s, no model downloads.
 - Tests that need model weights are marked `slow`.
+- Speech test clips are fixtures generated once with Windows' built-in text-to-speech (`tools/make_fixtures.ps1`) and committed in `tests/fixtures/`. Tests never call text-to-speech at run time and never use MELD audio.
 
 ## Python
 

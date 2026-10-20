@@ -1,6 +1,6 @@
 # Emotion Analyzer: build tasks
 
-Derived from `specs.md` v1.1, §14. The spec is the source of truth. If a task here and the spec disagree, the spec wins and this file is corrected.
+Derived from `specs.md` v1.2, §14. The spec is the source of truth. If a task here and the spec disagree, the spec wins and this file is corrected.
 
 **Markers**
 - `[ ]` to do, `[x]` done.
@@ -21,7 +21,7 @@ Then the build carries straight on to the next phase.
 ## Spec review (done, recorded in specs.md v1.1 §20)
 
 - [x] F1 Calibration (ECE, reliability diagram, temperatures fitted on dev) and an offline check added → AC-16 (P7), AC-17 (P9)
-- [x] F2 S7 exports all three text seeds; the ensemble is chosen by the §8.3 rule in P8
+- [x] F2 S7 exports all three text seeds; the ensemble is chosen by the §8.3 rule (moved from P8 to the start of P6 in v1.2)
 - [x] F3 Per-utterance transcripts and predictions stay in the git-ignored `data/kaggle/`; `results/` holds aggregates only
 - [x] F4 VAD runs on every clip (silence detection)
 - [x] F5 Every trained row is reported as a seed mean ± sd; R7 and R8 pair seed *i* with seed *i*; R9 is the deployed system; the ACs use the means
@@ -36,6 +36,14 @@ Then the build carries straight on to the next phase.
 - [x] F14 Trial `/export` at the end of the first sitting; the converter is built against it
 - [x] F15 Gemini consent, noted in the README
 - [x] §17 decisions settled: Gemini free API; optional Cloudflare quick tunnel; duration-weighted overall label; disagreement threshold 0.40; text ensemble by the §8.3 rule
+
+## Plan fixes (done, recorded in specs.md v1.2 §20)
+
+- [x] Text-ensemble rule applied at the start of P6, before the temperatures and fusion weight; +1.0 text-only weighted-F1 on dev Whisper transcripts, and AC-08 and AC-09 kept; `latency.py` built in P6
+- [x] §15 matches `CLAUDE.md`: one commit per phase, same flow and stop rules
+- [x] Window rule as three cases from P3 timing in both windows: (a) S4 chooses by WER; (b) fixed at 10 s, S4 records the WER cost; (c) `base.en` before P4
+- [x] Speech test clips generated once with Windows' text-to-speech and committed in `tests/fixtures/`
+- [x] Mains-power check moved to the P3 timing task
 
 ## User tasks to do in parallel
 
@@ -95,12 +103,16 @@ Then the build carries straight on to the next phase.
   - valid frames;
   - per-stage timing
 - [ ] `src/emotion_analyzer/metrics.py`: WER with Whisper's English normaliser and `jiwer` (the rest of the module comes in P4)
-- [ ] `tests/test_speech.py`: decoding and limits, segmentation rules, frame counts (500 for the 10 s window), the no-speech case. Tests that need weights are marked `slow`.
-- [ ] Check the laptop is on mains power (ask only if it's on battery), then measure WER on 300 local dev clips in both windows → `insights.md`
-- [ ] Per-stage and end-to-end CPU times on a 5 s clip in both windows → `insights.md`
-- [ ] Preliminary window rule (§8.1: WER(10 s) − WER(30 s) ≤ 2.0 points) → `insights.md`
-- [ ] Model size settled (F6): small.en if its end-to-end median meets AC-08 (≤ 2.0 s) in the chosen window; otherwise base.en, with `specs.md` updated (§20) before P4 continues
-- **Done when:** the numbers are in `insights.md`, the window rule is evaluated, the model size is settled, and the tests pass.
+- [ ] `tools/make_fixtures.ps1` → `tests/fixtures/`: speech clips generated once with Windows' built-in text-to-speech (System.Speech), WAV 16 kHz mono, under 1 MB in total, committed. At least a short clip (about 4 s) and a long one (about 25 s, with pauses between sentences) for the segmentation and API tests
+- [ ] `tests/test_speech.py`, using the fixtures: decoding and limits, segmentation rules, frame counts (500 for the 10 s window), the no-speech case. Tests that need weights are marked `slow`.
+- [ ] WER on 300 local dev clips in both windows → `insights.md`
+- [ ] Check the laptop is on mains power (ask only if it's on battery), then time per-stage and end-to-end CPU latency on a 5 s clip in both windows → `insights.md`
+- [ ] Preliminary WER rule (§8.1: WER(10 s) − WER(30 s) ≤ 2.0 points) → `insights.md`
+- [ ] Window case settled by §8.1, recorded in `insights.md` and `config.py`:
+  - (a) small.en meets AC-08 (median ≤ 2.0 s) in both windows: nothing changes, and S4 chooses the window by WER;
+  - (b) it meets AC-08 only with the 10 s window: no stop; the window is fixed at 10 s for clips up to 10 s, and S4 records the WER cost instead of choosing;
+  - (c) it fails AC-08 even with the 10 s window: switch to base.en, with `specs.md` updated (§20), and repeat the timing for base.en before P4
+- **Done when:** the numbers are in `insights.md`, the preliminary WER rule is evaluated, the window case (and with it the model size) is settled, and the tests pass.
 
 ## P4 Training code
 
@@ -130,7 +142,8 @@ Then the build carries straight on to the next phase.
 - [ ] `KAGGLE.md`, covering:
   - inputs and settings;
   - the two passes (S0 interactive, then Save & Run All);
-  - one config cell at the top;
+  - one config cell at the top, including the P3 window case;
+  - S4 choosing the window by WER in case (a), or recording the WER cost of the fixed 10 s window in case (b);
   - cells S0–S8, each complete, with expected output and run time;
   - GPU stages as subprocesses with the corrected `LD_LIBRARY_PATH`;
   - resume markers in `/kaggle/working/state/`, searched in every `/kaggle/input/*/` (F8), and the save-as-dataset alternative;
@@ -161,10 +174,15 @@ Then the build carries straight on to the next phase.
   - `metrics.json` into `results/`;
   - transcripts and per-utterance predictions stay in `data/kaggle/` (F3)
 - [ ] Training results (`logs/final_results.txt` from the zip, per-run dev and test scores) → `insights.md`
-- [ ] T_sound, T_text and the fusion weight fitted on the Kaggle dev probabilities → `models/fusion.json` (F1, F9)
-- [ ] `src/emotion_analyzer/evaluate.py`, the parity part: the CPU int8 pipeline on all of MELD dev (features, transcripts, quantised text model), and the weighted-F1 comparison for sound, text and fused → `results/parity.md` (aggregates only)
+- [ ] `src/emotion_analyzer/latency.py` (§10.4): per-stage timing on a 5 s clip and peak memory, for the single-seed or ensemble text configuration
+- [ ] Text-ensemble rule (§8.3), before anything is fitted → `config.py` and `insights.md`:
+  - first, text-only weighted-F1 on the dev Whisper transcripts: the 3-seed ensemble (mean of the seeds' probabilities) against the best single seed;
+  - only if the ensemble adds ≥ 1.0: check mains power, then run `latency.py` with the ensemble, which must still meet AC-08 and AC-09;
+  - otherwise, or if it fails either: the best single seed
+- [ ] T_sound, T_text and the fusion weight fitted on the Kaggle dev probabilities of the deployed models → `models/fusion.json` (F1, F9)
+- [ ] `src/emotion_analyzer/evaluate.py`, the parity part: the CPU int8 pipeline on all of MELD dev (features, transcripts, the deployed quantised text model), and the weighted-F1 comparison for sound, text and fused → `results/parity.md` (aggregates only)
 - [ ] Only if the sound gap is over 1.5 points: retrain the head on local CPU-int8 features (§16) → `models/sound_head.pt`
-- **Done when:** AC-07 is checked and the training results are in `insights.md`. AC-07: CPU parity, a weighted-F1 difference of at most 1.5 points on dev.
+- **Done when:** AC-07 is checked, the deployed text model is recorded, and the training results are in `insights.md`. AC-07: CPU parity, a weighted-F1 difference of at most 1.5 points on dev.
 
 ## P7 Evaluation
 
@@ -173,7 +191,7 @@ Then the build carries straight on to the next phase.
 - [ ] `evaluate.py` → `results/per_class.md` and the confusion matrices `results/confusion_*.png` (150 dpi)
 - [ ] `evaluate.py` → `results/wer.md`: WER for dev and test in both windows, and the window decision
 - [ ] `evaluate.py` → `results/calibration.md` and `results/reliability.png`: fused test ECE before and after temperature scaling (AC-16)
-- [ ] Check mains power (ask only if on battery), then `src/emotion_analyzer/latency.py` → `results/latency.md`:
+- [ ] Check mains power (ask only if on battery), then run `latency.py` on the deployed system → `results/latency.md`:
   - 2 warm-up and 20 timed runs on a 5 s clip;
   - median and p90 per stage and in total;
   - server peak memory
@@ -185,7 +203,7 @@ Then the build carries straight on to the next phase.
 - [ ] `evaluate.py` → `results/error_analysis.md`: 10 MELD test clips where sound and text disagree (transcripts quoted as text), and the confusions per class
 - [ ] Results, figures and a verdict on every AC → `insights.md`
 - **Done when:** AC-02 to AC-10 and AC-16 are checked and reported:
-  - AC-02: WER reported for dev and test in both windows, and the window chosen by the §8.1 rule
+  - AC-02: WER reported for dev and test in both windows, and the window set by the §8.1 rule (chosen by WER in case (a); fixed at 10 s with its WER cost in case (b))
   - AC-03: sound only (R1), MELD test weighted-F1 ≥ 40.0 (seed mean)
   - AC-04: text on real transcripts (R4) ≥ 58.0 (seed mean)
   - AC-05: fused with Whisper transcripts (R7) ≥ 52.0 and ≥ text on Whisper transcripts (R5), both seed means
@@ -199,7 +217,6 @@ Then the build carries straight on to the next phase.
 
 ## P8 App
 
-- [ ] Apply the text-ensemble rule (§8.3): the ensemble only if it adds ≥ 1.0 weighted-F1 on dev and still meets AC-08 → `config.py` and `insights.md`
 - [ ] Copy the clips listed in `data/own/demo_ok.txt` into `app/static/samples/`. If the file is missing, stop and remind.
 - [ ] `app/main.py`: FastAPI, with the models loaded once at start-up, `GET /`, `GET /api/health`, `POST /api/analyze`, and errors 400 / 413 / 422 in the §5.3 shape
 - [ ] `app/static/index.html`, `app.js` and `style.css`, with:
@@ -208,7 +225,7 @@ Then the build carries straight on to the next phase.
   - transcript, disagreement banner, and the timeline for recordings over 10 s;
   - processing time, demo samples, and the About panel (citations and limitations);
   - a phone-width layout and no CDNs
-- [ ] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Fixtures are generated; no MELD audio.
+- [ ] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Speech comes from the committed `tests/fixtures/` clips; silence, too short, too large and unsupported inputs are built in the test; no MELD audio, and no text-to-speech at run time.
 - [ ] Start the app locally and give the user the link
 - [ ] **USER** Try the app locally (record and upload) and give feedback
 - **Done when:** AC-11 passes and the user has tried the app. AC-11: the API tests pass for a normal clip, silence, a long recording, an unsupported format, a file that is too large and one that is too short.
@@ -243,7 +260,7 @@ Then the build carries straight on to the next phase.
 
 - [ ] `README.md` complete: install, run, train (via `KAGGLE.md`), deploy, the Gemini consent note (F15), citations (§18)
 - [ ] `specs.md` matches the build, with every change recorded in §20
-- [ ] `tests/test_repo_rules.py`: the AC-13 scan (no MELD audio tracked in git or among the demo samples; no banned checkpoint in code or config)
+- [ ] `tests/test_repo_rules.py`: the AC-13 scan (the only audio tracked in git is `tests/fixtures/`; no MELD audio among the demo samples; no banned checkpoint in code or config)
 - [ ] Final full test run, including `slow` → `insights.md`
 - [ ] Fresh-clone walkthrough of the README (install, tests, serve) → `insights.md`
 - [ ] `tools/transcript_to_html.py`, built and tested against the trial export (F14), with the session's `.jsonl` log as the fallback source

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.1 (approved for build; changes in §20) |
+| Version | 1.2 (approved for build; changes in §20) |
 | Date | 2026-10-20 |
 | Course | Applied Data Science and AI (UMC 301), project 4 |
 | Method | Spec-driven development. This file is the source of truth; every change goes through the change log (§20) |
@@ -88,6 +88,7 @@ Free only: no paid APIs, no paid hosting.
 - **RAVDESS** is CC BY-NC-SA 4.0: non-commercial use, with attribution.
 - Citations (§18) appear in `README.md` and in the app's About panel.
 - Per-utterance MELD transcripts and predictions stay in the git-ignored `data/kaggle/`. The committed `results/` folder holds only aggregate tables, figures and `metrics.json`; the error analysis may quote its 10 transcripts as text, never audio.
+- The only audio committed to git is the small text-to-speech test fixtures in `tests/fixtures/` (§13), generated with Windows' built-in text-to-speech.
 
 ### 4.4 Banned
 
@@ -201,7 +202,7 @@ text  = tok.decode([i for i in ids if i < tok.eot])
 frames = np.array(enc)[0, :ceil(duration_s / 0.02)]        # valid frames only; 1 encoder frame = 20 ms
 ```
 
-- **Window choice:** use 10 s for segments of 10 s or less, provided the dev word-error-rate rule in §8.1 holds. Otherwise use the standard 30 s window.
+- **Window choice:** set by the window rule in §8.1: latency first, then word error rate. Either the 10 s window is used for segments of 10 s or less, or the standard 30 s window.
 - **Training features** are computed on Kaggle with the same model on GPU (`device="cuda", compute_type="float16"`). Phase 6 checks that the laptop's CPU int8 features give the same results (§10.5).
 
 ### 6.2 Modules
@@ -302,11 +303,15 @@ Fetch them with `huggingface_hub.hf_hub_download(repo_id="ajyy/MELD_audio", repo
   - Laptop: int8 on the CPU.
   - Kaggle: CUDA float16.
 - **Decoding:** greedy (`beam_size=1`), no timestamps, English.
-- **Window rule:** use the 10 s window if, on MELD dev, WER(10 s) − WER(30 s) ≤ 2.0 points absolute. Otherwise use the 30 s window. The decision is recorded in `models/decision.json` and in `insights.md`.
+- **Window rule.** Phase 3 times small.en end to end on a 5 s clip in **both** windows (§10.4 method, on mains power). Then exactly one case applies:
+  - **(a) small.en meets AC-08 in both windows.** S4 chooses the window: 10 s if, on MELD dev, WER(10 s) − WER(30 s) ≤ 2.0 points absolute; otherwise 30 s.
+  - **(b) small.en meets AC-08 only with the 10 s window.** The build doesn't stop. The window is fixed at 10 s for clips up to 10 s, and S4 records the WER cost, WER(10 s) − WER(30 s) on dev and test, instead of choosing the window.
+  - **(c) small.en fails AC-08 even with the 10 s window.** The spec switches to `base.en` before Phase 4, and the same timing check is repeated for it.
+- The case, the window and the WER figures are recorded in `models/decision.json` and in `insights.md`.
 - **WER computation:** apply Whisper's English text normaliser (the Whisper tokenizer's `normalize()` in `transformers`, or an equivalent) to both the reference and the hypothesis, then compute WER with `jiwer`.
 - **Expected WER on MELD:** about 35%. MELD's references are subtitles and the audio is noisy TV dialogue. For comparison, small.en gets about 3% on clean read speech (LibriSpeech test-clean) and about 14% on acted speech (IEMOCAP).
 - **Clips longer than the window** are transcribed in consecutive chunks of up to the window's length, and the text is joined. This applies to both windows (2.1% of MELD clips exceed 10 s, and 3 exceed 30 s), so the window comparison is fair.
-- **Model size is settled in Phase 3, before any training.** `base.en` is not a drop-in fallback after training: its encoder output is 512-wide where the sound head expects small.en's 768, and the text model trains on small.en's transcripts. Phase 3 measures the end-to-end CPU latency in both windows. If small.en cannot meet AC-08, the spec switches to base.en before Phase 5.
+- **Model size is settled in Phase 3, before any training,** by case (c) of the window rule. `base.en` is not a drop-in fallback after training: its encoder output is 512-wide where the sound head expects small.en's 768, and the text model trains on small.en's transcripts.
 
 ### 8.2 Sound model: `attnpool-v1`
 
@@ -353,7 +358,12 @@ LayerNorm(768) → Linear(768, 256) → GELU → Dropout(0.2)
 - **Model selection:** dev weighted-F1 measured on **dev Whisper transcripts**, the condition the app runs in.
 - **Ablation T:** the same recipe trained on real transcripts only.
 - **Inference:** `torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)` on the CPU.
-- **Deployed model:** decided in Phase 8 by a fixed rule. Use the 3-seed ensemble only if it adds at least 1.0 weighted-F1 on dev **and** the end-to-end latency still meets AC-08; otherwise use the best single seed. S7 exports all three main-seed checkpoints, so the rule needs no second Kaggle run.
+- **Deployed model:** decided at the start of Phase 6, before the temperatures and the fusion weight are fitted (§8.4), by a fixed rule. Use the 3-seed ensemble (the mean of the three seeds' probabilities) only if:
+  - it adds at least 1.0 point of text-only weighted-F1 on the dev Whisper transcripts over the best single seed; **and**
+  - the end-to-end latency still meets AC-08; **and**
+  - the server's peak memory still meets AC-09.
+
+  Otherwise use the best single seed. The F1 test comes first; latency and memory are measured with `latency.py` only if it passes. S7 exports all three main-seed checkpoints, so the rule needs no second Kaggle run.
 
 ### 8.4 Fusion
 
@@ -363,7 +373,7 @@ log p_fused = w · log p_sound + (1 − w) · log p_text   →   softmax-renorma
 
 - **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise dev weighted-F1. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts.
 - **Calibration first:** before fusing, each model's log-probabilities are temperature-scaled with T_sound and T_text, each fitted on dev by minimising negative log-likelihood. The weight search then runs on the calibrated dev probabilities.
-- **When:** at the start of Phase 6, because the parity check needs the fused output.
+- **When:** at the start of Phase 6, right after the text-ensemble rule (§8.3) has fixed the deployed text model, because the parity check needs the fused output.
 - **Saved:** `models/fusion.json`, holding both temperatures and the weight.
 - **Disagreement rule:** see §5.3.
 
@@ -437,7 +447,7 @@ Finished stages are then skipped. Features are cheap to recompute, so they are n
 | S1 | **Download MELD** from Hugging Face with `hf_hub_download`, and extract it to `/tmp/meld`. If that fails, attach the fallback input `ngocson2002/meld-datasetv2`. |
 | S2 | **Build manifests:** the CSV join, defect handling, count assertions and class tables, for MELD and the acted corpora. Copy RAVDESS from **one** of its duplicated folder trees, resampled to 16 kHz in `/tmp`. |
 | S3 | **Transcribe** every MELD split in **both** windows, across both GPUs. Write `transcripts/{split}_{10s,30s}.csv`, and WER per split and window. |
-| S4 | **Window decision** by the rule in §8.1. Write `decision.json`. |
+| S4 | **Window decision** by the rule in §8.1. The Phase 3 case is set in the config cell: in case (a), choose the window by the WER rule; in case (b), keep the fixed 10 s window and record its WER cost on dev and test. Write `decision.json`. |
 | S5 | **Encoder frames** in the chosen window, for MELD (all splits) plus CREMA-D plus RAVDESS, and for MELD in the other window (ablation W). Trim to the valid length and store as fp16 in shards, with an index, under `/tmp/features`. |
 | S6 | **Sound heads:** main ×3 seeds, ablation A ×3, ablation W ×3. Save the best checkpoints, and dev and test probabilities. |
 | S7 | **Text models:** main ×3 seeds and ablation T ×3, two runs in parallel (one per GPU). Save **all three** main-seed checkpoints (fp16 safetensors), plus dev and test probabilities on both real and Whisper transcripts for every run. |
@@ -562,7 +572,7 @@ Typical fusion gains reported on MELD are +0.5 to +2.5 points.
 | ID | Criterion | How it is checked |
 |---|---|---|
 | AC-01 | MELD joins to 9,988 / 1,108 / 2,610 audio–label pairs | Loader assertion and a test |
-| AC-02 | WER reported for dev and test in both windows, and the window chosen by the §8.1 rule | `insights.md`, `decision.json` |
+| AC-02 | WER reported for dev and test in both windows, and the window set by the §8.1 rule (chosen by WER in case (a); fixed at 10 s with its WER cost recorded in case (b)) | `insights.md`, `decision.json` |
 | AC-03 | Sound only (R1), MELD test weighted-F1 ≥ 40.0 (mean of 3 seeds) | Results table |
 | AC-04 | Text on real transcripts (R4) ≥ 58.0 (mean of 3 seeds) | Results table |
 | AC-05 | Fused, with Whisper transcripts (R7), ≥ 52.0 **and** ≥ text on Whisper transcripts (R5), both as seed means | Results table |
@@ -571,9 +581,9 @@ Typical fusion gains reported on MELD are +0.5 to +2.5 points.
 | AC-08 | Latency: median ≤ 2.0 s per 5 s clip, end to end, laptop plugged in. Stretch: ≤ 1.2 s | `latency.py` output |
 | AC-09 | Server peak memory ≤ 2.5 GB | `latency.py` output |
 | AC-10 | Own recordings evaluated, and the chatbot comparison done on the same clips | `results/` tables |
-| AC-11 | API tests pass: normal clip, silence, long recording (segmented), unsupported format, too large, too short | `pytest` |
+| AC-11 | API tests pass: normal clip, silence, long recording (segmented), unsupported format, too large, too short | `pytest`, with the committed speech fixtures |
 | AC-12 | App reachable from a phone on the same Wi-Fi over HTTPS, and analysis works (upload and record). The optional internet link works if enabled | The server access log, and the deployment check in `insights.md` |
-| AC-13 | No MELD audio in git or in the demo samples; no banned checkpoint anywhere in the code | Test that scans the repository and config |
+| AC-13 | No MELD audio in git or in the demo samples (the only tracked audio is the fixtures in `tests/fixtures/`); no banned checkpoint anywhere in the code | Test that scans the repository and config |
 | AC-14 | README lets a new user install, run, train (via `KAGGLE.md`) and deploy from scratch | Manual check in Phase 10 |
 | AC-15 | Transcript exported and converted to `transcript.html` with Turn N headings and collapsed responses | Phase 10 |
 | AC-16 | Fused test calibration error reported before and after temperature scaling, with the reliability diagram | `results/calibration.md` |
@@ -629,8 +639,9 @@ emotion-analyzer/
 ├── results/                  aggregate tables (.csv/.md), figures (.png, 150 dpi), metrics.json (committed)
 ├── logs/                     server.log, the app's access log (git-ignored)
 ├── tests/                    test_data.py, test_speech.py, test_models.py, test_fusion.py,
-│                             test_metrics.py, test_api.py, test_repo_rules.py
-└── tools/                    transcript_to_html.py
+│                             test_metrics.py, test_api.py, test_repo_rules.py,
+│                             fixtures/ (text-to-speech WAV clips, 16 kHz mono, under 1 MB in total; committed)
+└── tools/                    transcript_to_html.py, make_fixtures.ps1 (generates tests/fixtures/ once)
 ```
 
 ## 14. Build phases
@@ -641,38 +652,47 @@ emotion-analyzer/
 |---|---|---|
 | P1 Scaffold | Folder tree (§13), `.venv` from `py -3.12`, pinned requirements, `pyproject.toml`, `.githooks/pre-commit`, `.gitignore`, README stub, `config.py` | `pytest` runs (trivial tests pass) and the hook runs them on commit |
 | P2 Data | `data.py`: MELD dev downloaded locally, the join with defects, label maps for CREMA-D and RAVDESS, own-recordings loader. A short data report in `insights.md` | AC-01 logic tested on dev (1,108 pairs); label-map tests pass |
-| P3 Speech pipeline | `speech.py` (shared pass, both windows, VAD on every clip, chunked transcription of long clips, timing). WER on 300 local dev clips in both windows; per-stage and end-to-end CPU times | Numbers in `insights.md`; preliminary window rule evaluated; model size (small.en or base.en) settled against AC-08; tests pass |
+| P3 Speech pipeline | `speech.py` (shared pass, both windows, VAD on every clip, chunked transcription of long clips, timing); the text-to-speech fixtures in `tests/fixtures/`. WER on 300 local dev clips in both windows; per-stage and end-to-end CPU times in both windows | Numbers in `insights.md`; preliminary WER rule evaluated; the §8.1 window case (a), (b) or (c) settled, and with it the model size; tests pass |
 | P4 Training code | `features.py`, `sound_model.py`, `text_model.py`, `fusion.py`, `metrics.py`, `transcribe.py`, smoke-tested locally on a few dev clips with tiny settings | Every stage's code runs end to end locally on tiny settings |
 | P5 Kaggle package | `scripts/package_kaggle.py` → `kaggle/code/`; `requirements-kaggle.txt`; `KAGGLE.md` with the inputs and settings, the two-pass run from §9.1 (the interactive S0 check, then the Save & Run All commit), cells S0–S8 with expected output and run time, how to resume from a previous version's output, and how to download the results; a local dry-run of the cell sequence on a tiny subset | Dry-run passes; the GPU-hours estimate is stated |
 | — | **User runs S0 interactively, then commits the notebook (Save & Run All)** | `emotion_outputs.zip` downloaded from the version's Output tab |
-| P6 Import and parity | The zip moved from Downloads into `data/kaggle/` and unpacked (models into `models/`, aggregates into `results/`); temperatures and fusion weight fitted on dev; the CPU int8 parity check on dev | AC-07 checked; training results in `insights.md` |
+| P6 Import and parity | The zip moved from Downloads into `data/kaggle/` and unpacked (models into `models/`, aggregates into `results/`); `latency.py`; the text-ensemble rule (§8.3) applied; then temperatures and fusion weight fitted on dev; the CPU int8 parity check on dev | AC-07 checked; the deployed text model recorded; training results in `insights.md` |
 | P7 Evaluation | The full results table (§10.2) with CIs and seed means; calibration; latency; own recordings; chatbot comparison; error analysis; figures | AC-02 to AC-10 and AC-16 checked and reported |
-| P8 App | The text-ensemble rule (§8.3) applied; FastAPI app and UI (§5) with demo samples; API tests | AC-11 passes; the user tries the app locally |
+| P8 App | FastAPI app and UI (§5) with demo samples; API tests | AC-11 passes; the user tries the app locally |
 | P9 Deployment | Certificate, serve, tunnel and smoke scripts; firewall and network instructions; offline check; README "Running in production" | AC-12 verified from a phone; AC-17 checked |
 | P10 Wrap-up | README complete; spec matches the build; final test run; transcript converter built against the trial export | AC-13 to AC-15 |
 
 ## 15. Working rules for the build (copy into CLAUDE.md)
 
-- This spec is the source of truth. When the design or direction changes, update it first and record the reason in §20.
-- `README.md` is the user guide, not the plan.
-- After each finished task:
-  - tick it in `tasks.md`;
-  - note problems in `issues.md`;
-  - note results and figures in `insights.md`;
-  - commit.
-- Tests are the acceptance criteria. Every phase ends with tests that pass. The git pre-commit hook (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`) runs the fast tests (under 60 s, no model downloads). Tests that need model weights are marked `slow`.
-- Use only the project virtual environment (`py -3.12`). Never the system `python`.
-- Put the working directory on its own line before every command given to the user.
+- **Source of truth:**
+  - This spec is the source of truth. When the design or direction changes, update it first and record the reason in §20.
+  - `README.md` is the user guide, not the plan. The build checklist is `tasks.md`.
+- **Flow:**
+  - Work through `tasks.md` in order, phase by phase.
+  - At the end of each phase: make sure its tests pass; tick its tasks; record problems in `issues.md` and results in `insights.md`; commit as `Pn: …`; give a short summary. Then carry straight on to the next phase.
+  - Tasks marked `USER` block the build. Stop and ask; don't do them or work around them.
+  - Tasks marked `USER-ANYTIME` don't block. Remind the user of them in each phase summary until they're done. Stop only if the phase that needs one arrives and it still isn't done.
+  - Also stop if something would contradict this spec, or if a result fails an acceptance criterion in a way that changes the plan.
+- **After each finished task:** tick it in `tasks.md`; note problems in `issues.md`; note results and figures in `insights.md`.
+- **Tests:**
+  - Tests are the acceptance criteria. Every phase ends with tests that pass.
+  - The git pre-commit hook (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`) runs the fast tests: under 60 s, no model downloads.
+  - Tests that need model weights are marked `slow`.
+  - Speech test clips are fixtures generated once with Windows' built-in text-to-speech (`tools/make_fixtures.ps1`) and committed in `tests/fixtures/`. Tests never call text-to-speech at run time and never use MELD audio.
+- **Python:** use only the project virtual environment, built from `py -3.12` (`.venv\Scripts\python.exe`). Never the system `python`: the one on PATH is a 3.14 interpreter from another project.
+- **Commands given to the user:** put the working directory on its own line before every command.
+- **Timing:** before timing anything, check that the laptop is on mains power. Ask only if it is on battery.
 - **Kaggle:**
-  - Training code lives in the project.
-  - The Kaggle steps live in `KAGGLE.md` as complete numbered cells, each with its expected output and run time.
-  - Update `KAGGLE.md` whenever a cell changes.
-  - Kaggle code uses both T4s where it helps, checkpoints to `/kaggle/working`, resumes after interruption, stops safely before 12 h, and ends with one compact results block.
-- Smoke-test locally on a tiny subset before any Kaggle run.
-- Never commit MELD audio, never use it as demo samples, and never use a banned checkpoint (§4.4).
-- Never print or commit secrets. Read keys from `.env`.
-- Tasks marked `USER` in `tasks.md` block the build: stop and ask. Tasks marked `USER-ANYTIME` don't: mention them in each phase summary until they're done, and stop only if a phase actually needs one that isn't done.
-- Before timing anything, check that the laptop is on mains power; ask only if it is on battery.
+  - Training code lives in the project (`src/emotion_analyzer/`). `scripts/package_kaggle.py` builds `kaggle/code/` from it.
+  - The Kaggle steps live in `KAGGLE.md` as complete numbered cells, each with its expected output and run time. Update `KAGGLE.md` whenever a cell changes.
+  - The run has two passes: S0 interactively, then Save & Run All (Commit) in the background.
+  - Kaggle code uses both T4s where it helps; runs the GPU stages as subprocesses with the corrected `LD_LIBRARY_PATH`; keeps features in `/tmp` and only small results in `/kaggle/working`; resumes from `state/` markers found in `/kaggle/working` or any `/kaggle/input/*/`; stops safely before 12 h; and ends with one compact results block.
+  - Smoke-test locally on a tiny subset before any Kaggle run.
+- **Data, licences and secrets:**
+  - Never commit MELD audio, and never use it as demo samples.
+  - Per-utterance transcripts and predictions stay in the git-ignored `data/kaggle/`. `results/` holds aggregates only.
+  - Never use a banned checkpoint (§4.4).
+  - Never print or commit secrets. Read keys from `.env`, which is git-ignored.
 
 ## 16. Risks and mitigations
 
@@ -680,7 +700,7 @@ emotion-analyzer/
 |---|---|
 | MELD audio is noisy (laugh tracks, music, overlapping speech), so the sound branch is weak | Expected (40–46). Report it honestly. Fusion and the disagreement flag still add value |
 | Subtitle references inflate WER | Normalise the text. State the caveat. Compare windows on the same references |
-| The 10 s window is untested on noisy speech | The WER rule in §8.1 decides, and ablation W measures the effect on the sound model |
+| The 10 s window is untested on noisy speech | The WER rule in §8.1 decides in case (a); in case (b), where latency fixes the window at 10 s, its WER cost is recorded. Ablation W measures the effect on the sound model |
 | GPU fp16 features differ from CPU int8 features | Parity check (AC-07). If it fails, retrain the head on CPU-int8 features extracted locally |
 | CTranslate2 cannot load cuBLAS 12 or cuDNN 9 on the Kaggle image | S0 checks it in a subprocess before the commit. Fixes in §9.2: the pip NVIDIA libraries plus `LD_LIBRARY_PATH`, or `ctranslate2==4.4.0`. Final fallback: `transformers` Whisper on the GPU |
 | The interactive session times out during a long run | The main run is a background commit (§9.1); interactive use is limited to the S0 check |
@@ -701,7 +721,7 @@ emotion-analyzer/
 |---|---|---|
 | Internet link | Optional Cloudflare quick tunnel, on demand | Local network only |
 | Chatbot comparison | Gemini free API (ChatGPT by hand only if the API is unavailable) | ChatGPT by hand |
-| Text model at inference | The rule in §8.3, applied in Phase 8 | Fixed single seed or fixed ensemble |
+| Text model at inference | The rule in §8.3, applied at the start of Phase 6 | Fixed single seed or fixed ensemble |
 | Overall label for multi-segment audio | Duration-weighted mean of fused probabilities | Majority vote of the segments |
 | Disagreement threshold | Both confidences ≥ 0.40 | 0.30 or 0.50 |
 
@@ -745,3 +765,8 @@ emotion-analyzer/
 |---|---|---|---|
 | 1.0 | 2026-10-20 | Initial specification | — |
 | 1.1 | 2026-10-20 | Accepted the 15 findings from the spec review in `tasks.md`: calibration and an offline check added (F1; AC-16, AC-17); all three text seeds exported and the ensemble chosen by a rule (F2); per-utterance outputs kept out of git (F3); VAD on every clip (F4); seed means for every trained row, plus a deployed-system row (F5); model size settled in Phase 3 (F6); chunked transcription of long clips (F7); resume searches every attached input (F8); fusion weight and temperatures fitted at the start of Phase 6 (F9); WER wording corrected (F10); `pyproject.toml` and a versioned pre-commit hook (F11); demo-sample folder (F12); Wi-Fi isolation risk (F13); trial export (F14); Gemini consent (F15). Settled every §17 decision. Kaggle zip goes from Downloads to `data/kaggle/`. Hand-offs go through files instead of pasted text: `s0_check.txt`, `logs/final_results.txt` in the zip, the server access log and `results/offline_check.txt` | Spec review before the build; avoids a second Kaggle run and unnecessary stops during the build |
+| 1.2 | 2026-10-20 | Text-ensemble rule applied at the start of Phase 6, before the temperatures and the fusion weight are fitted. The +1.0 is text-only weighted-F1 on the dev Whisper transcripts, and the ensemble must also keep AC-08 and AC-09. `latency.py` moves to Phase 6 for this check (§8.3, §8.4, §14, §17) | The Phase 6 fit, the Phase 6 parity check, and R9 and the latency report in Phase 7 all need the deployed text model, which v1.1 decided only in Phase 8. Three int8 RoBERTa copies add about 0.5 GB against the memory cap |
+| 1.2 | 2026-10-20 | §15 brought in line with `CLAUDE.md`: one commit per phase, and the same flow and stop rules | §15 still said to commit after every task, and lacked the flow rules that `CLAUDE.md` follows |
+| 1.2 | 2026-10-20 | Window rule rewritten as three cases, set by timing small.en in both windows in Phase 3 (§6.1, §8.1, §9.3 S4, AC-02, §14, §16): (a) both windows meet AC-08, so S4 chooses by WER; (b) only the 10 s window meets AC-08, so the window is fixed at 10 s and S4 records the WER cost; (c) neither does, so `base.en` is adopted before Phase 4 | v1.1 settled the model size against the preliminary window, but S4 makes the final window choice after training is fixed. Had S4 picked 30 s, AC-08 could have failed with no cheap way back |
+| 1.2 | 2026-10-20 | Speech test clips generated once with Windows' built-in text-to-speech (`tools/make_fixtures.ps1`) and committed in `tests/fixtures/`, the only audio in git (§4.3, AC-11, AC-13, §13, §14, §15) | With VAD on every clip, a synthetic tone reads as silence, so the normal-clip and long-recording tests need real speech. Committed fixtures keep the tests independent of text-to-speech at run time |
+| 1.2 | 2026-10-20 | `tasks.md` only: the mains-power check moved from the Phase 3 WER task to the timing task | Only timing needs mains power |
