@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.0 (approved for build) |
+| Version | 1.1 (approved for build; changes in §20) |
 | Date | 2026-10-20 |
 | Course | Applied Data Science and AI (UMC 301), project 4 |
 | Method | Spec-driven development. This file is the source of truth; every change goes through the change log (§20) |
@@ -87,6 +87,7 @@ Free only: no paid APIs, no paid hosting.
 - **CREMA-D** is ODbL; attribution is required.
 - **RAVDESS** is CC BY-NC-SA 4.0: non-commercial use, with attribution.
 - Citations (§18) appear in `README.md` and in the app's About panel.
+- Per-utterance MELD transcripts and predictions stay in the git-ignored `data/kaggle/`. The committed `results/` folder holds only aggregate tables, figures and `metrics.json`; the error analysis may quote its 10 transcripts as text, never audio.
 
 ### 4.4 Banned
 
@@ -117,9 +118,10 @@ Ports 8000 (another project's app) and 8765 (another project's demo) are taken. 
 
 ### 5.2 Segmentation
 
-- Audio of 10 s or less is one segment.
-- Longer audio is split with faster-whisper's Silero VAD (`faster_whisper.vad.get_speech_timestamps`) into speech segments. Segments are then merged or split so each lasts 1–10 s.
-- If no speech is detected, the response has `"speech_detected": false` and no labels.
+- Silero VAD (`faster_whisper.vad.get_speech_timestamps`) runs on **every** clip.
+- If it finds no speech, the response has `"speech_detected": false` and no labels.
+- Audio of 10 s or less that contains speech stays one segment: the whole clip.
+- Longer audio is split into the VAD's speech segments, merged or split so each lasts 1–10 s.
 
 ### 5.3 API
 
@@ -170,7 +172,7 @@ The UI is a single page in plain HTML, CSS and JavaScript, with no external CDNs
 - **Disagreement banner**, for example: "Tone and words disagree: it sounds angry, but the words read as surprised."
 - **Timeline** of segments, for recordings longer than 10 s.
 - **Processing time.**
-- **Demo samples:** only the user's own recordings, with consent.
+- **Demo samples:** only the user's own recordings, with consent. They are served from the git-ignored folder `app/static/samples/`, filled in Phase 8 from the clips listed in `data/own/demo_ok.txt`.
 - **About panel:** citations, plus the limitations ("trained on TV dialogue; not for clinical use; English only").
 - **Layout:** works at phone width.
 - **Microphone access:** browsers allow microphone recording only in a secure context (HTTPS or localhost). The local-network server therefore uses HTTPS with a self-signed certificate (§12). Upload always works.
@@ -281,7 +283,7 @@ Fetch them with `huggingface_hub.hf_hub_download(repo_id="ajyy/MELD_audio", repo
 
 - **Clips:** 30–50 clips of 3–8 s each, of the user and friends saying varied everyday sentences in each emotion, with at least 4 clips per emotion.
 - **Location:** `data/own/`, named `{emotion}_{nn}.{wav|m4a|mp3|webm}`. The label is read from the file name.
-- **Privacy:** recorded with consent and git-ignored.
+- **Privacy:** recorded with consent and git-ignored. The consent also covers sending the clips to Google's Gemini for the chatbot comparison (§10.7), and the README says so.
 - **Used for:**
   - evaluation (§10.6);
   - the chatbot comparison (§10.7);
@@ -302,8 +304,9 @@ Fetch them with `huggingface_hub.hf_hub_download(repo_id="ajyy/MELD_audio", repo
 - **Decoding:** greedy (`beam_size=1`), no timestamps, English.
 - **Window rule:** use the 10 s window if, on MELD dev, WER(10 s) − WER(30 s) ≤ 2.0 points absolute. Otherwise use the 30 s window. The decision is recorded in `models/decision.json` and in `insights.md`.
 - **WER computation:** apply Whisper's English text normaliser (the Whisper tokenizer's `normalize()` in `transformers`, or an equivalent) to both the reference and the hypothesis, then compute WER with `jiwer`.
-- **Expected WER on MELD:** about 35%. MELD's references are subtitles and the audio is noisy TV dialogue; the same model gets about 14% on clean speech.
-- **Fallback:** `base.en`, if the latency criterion fails.
+- **Expected WER on MELD:** about 35%. MELD's references are subtitles and the audio is noisy TV dialogue. For comparison, small.en gets about 3% on clean read speech (LibriSpeech test-clean) and about 14% on acted speech (IEMOCAP).
+- **Clips longer than the window** are transcribed in consecutive chunks of up to the window's length, and the text is joined. This applies to both windows (2.1% of MELD clips exceed 10 s, and 3 exceed 30 s), so the window comparison is fair.
+- **Model size is settled in Phase 3, before any training.** `base.en` is not a drop-in fallback after training: its encoder output is 512-wide where the sound head expects small.en's 768, and the text model trains on small.en's transcripts. Phase 3 measures the end-to-end CPU latency in both windows. If small.en cannot meet AC-08, the spec switches to base.en before Phase 5.
 
 ### 8.2 Sound model: `attnpool-v1`
 
@@ -350,7 +353,7 @@ LayerNorm(768) → Linear(768, 256) → GELU → Dropout(0.2)
 - **Model selection:** dev weighted-F1 measured on **dev Whisper transcripts**, the condition the app runs in.
 - **Ablation T:** the same recipe trained on real transcripts only.
 - **Inference:** `torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)` on the CPU.
-- **Deployed model:** the main run's best dev seed. Ensembling the 3 seeds at inference is an open decision (§17).
+- **Deployed model:** decided in Phase 8 by a fixed rule. Use the 3-seed ensemble only if it adds at least 1.0 weighted-F1 on dev **and** the end-to-end latency still meets AC-08; otherwise use the best single seed. S7 exports all three main-seed checkpoints, so the rule needs no second Kaggle run.
 
 ### 8.4 Fusion
 
@@ -359,7 +362,9 @@ log p_fused = w · log p_sound + (1 − w) · log p_text   →   softmax-renorma
 ```
 
 - **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise dev weighted-F1. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts.
-- **Saved:** `models/fusion.json`.
+- **Calibration first:** before fusing, each model's log-probabilities are temperature-scaled with T_sound and T_text, each fitted on dev by minimising negative log-likelihood. The weight search then runs on the calibrated dev probabilities.
+- **When:** at the start of Phase 6, because the parity check needs the fused output.
+- **Saved:** `models/fusion.json`, holding both temperatures and the weight.
 - **Disagreement rule:** see §5.3.
 
 ## 9. Training plan (Kaggle)
@@ -380,7 +385,8 @@ The run happens in **two passes**:
    - installs the pinned packages;
    - downloads a handful of MELD dev clips;
    - confirms CTranslate2 runs on CUDA (§9.2);
-   - prints the measured per-clip times and the re-estimated total for every stage.
+   - prints the measured per-clip times and the re-estimated total for every stage;
+   - writes the same report to `/kaggle/working/s0_check.txt`. The user downloads it from the editor's Output panel into `C:\Users\adity\Downloads`, and the session reads it from there.
 
    The long run doesn't happen here, because interactive sessions stop after about 60 minutes idle.
 2. **Main run, as a background commit.** Use **Save Version → Save & Run All (Commit)**. Kaggle then:
@@ -395,7 +401,7 @@ The run happens in **two passes**:
 - no manual step between cells;
 - each stage prints a one-line status, and an error message that says what to do.
 
-**Getting the results:** open the finished version → **Output** → download `emotion_outputs.zip`. If the browser download fails, use the Kaggle CLI instead: `kaggle kernels output <username>/emotion-analyzer-train -p <local folder>`.
+**Getting the results:** open the finished version → **Output** → download `emotion_outputs.zip` (into `C:\Users\adity\Downloads`; Phase 6 moves it into the git-ignored `data/kaggle/`). If the browser download fails, use the Kaggle CLI instead: `kaggle kernels output <username>/emotion-analyzer-train -p <local folder>`.
 
 ### 9.2 Environment on Kaggle
 
@@ -417,8 +423,8 @@ The run happens in **two passes**:
 
 ### 9.3 Stages
 
-**Resuming.** Every stage writes its results and a marker file into `/kaggle/working/state/`. When a stage starts, it skips work that is already present, either there or in an optional input at `/kaggle/input/emotion-analyzer-prev/`. That input is the output of a previous version, attached through **Add Input**. If a run fails part-way:
-1. Attach the failed version's output as that input.
+**Resuming.** Every stage writes its results and a marker file into `/kaggle/working/state/`. When a stage starts, it skips work that is already present, either there or in the `state/` folder of **any** attached input under `/kaggle/input/*/`. A previous version's output, attached through **Add Input**, mounts under that notebook's own name, so the code searches every input rather than one fixed path. `KAGGLE.md` also describes the alternative: save the output as a new private dataset and attach that. If a run fails part-way:
+1. Attach the failed version's output through **Add Input**.
 2. Run **Save & Run All** again.
 
 Finished stages are then skipped. Features are cheap to recompute, so they are not carried over.
@@ -434,8 +440,8 @@ Finished stages are then skipped. Features are cheap to recompute, so they are n
 | S4 | **Window decision** by the rule in §8.1. Write `decision.json`. |
 | S5 | **Encoder frames** in the chosen window, for MELD (all splits) plus CREMA-D plus RAVDESS, and for MELD in the other window (ablation W). Trim to the valid length and store as fp16 in shards, with an index, under `/tmp/features`. |
 | S6 | **Sound heads:** main ×3 seeds, ablation A ×3, ablation W ×3. Save the best checkpoints, and dev and test probabilities. |
-| S7 | **Text models:** main ×3 seeds and ablation T ×3, two runs in parallel (one per GPU). Save the best seed's checkpoint (fp16 safetensors), plus dev and test probabilities on both real and Whisper transcripts. |
-| S8 | **Export:** `predictions/*.npz`, `metrics.json` and the logs. Print **one compact final results block**, and zip everything needed into `/kaggle/working/emotion_outputs.zip` (target under 1 GB). |
+| S7 | **Text models:** main ×3 seeds and ablation T ×3, two runs in parallel (one per GPU). Save **all three** main-seed checkpoints (fp16 safetensors), plus dev and test probabilities on both real and Whisper transcripts for every run. |
+| S8 | **Export:** `predictions/*.npz`, `metrics.json` and the logs. Print **one compact final results block**, save it as `logs/final_results.txt`, and zip everything needed into `/kaggle/working/emotion_outputs.zip` (target about 1 GB). |
 
 ### 9.4 GPU-hours
 
@@ -458,7 +464,7 @@ The budget cap is 6 GPU-hours, comfortably inside one 12-hour commit and the wee
 **`/kaggle/working`** (20 GB, saved as the output). Keep only what is needed, with a target under 2 GB:
 - transcripts and `decision.json`;
 - `sound_head.pt` and its config;
-- the text model (fp16, about 250 MB);
+- the three text-model seeds (fp16, about 250 MB each);
 - predictions, `metrics.json`, logs and the state markers;
 - `emotion_outputs.zip`.
 
@@ -472,9 +478,9 @@ S0 prints the free space in both. If `/tmp` has less than 15 GB free, extract fe
 **RAM:** about 30 GB, so one window's features fit in memory for training the heads.
 
 **`emotion_outputs.zip`** contains:
-- `models/`: `sound_head.pt`, `sound_head.json`, `text_model/` (fp16 safetensors plus tokenizer) and `decision.json`;
+- `models/`: `sound_head.pt`, `sound_head.json`, `text_model_seed0/`, `text_model_seed1/` and `text_model_seed2/` (fp16 safetensors plus tokenizer) and `decision.json`;
 - `predictions/`: dev and test probabilities for every run;
-- `transcripts/`, `metrics.json` and `logs/`.
+- `transcripts/`, `metrics.json` and `logs/` (including `final_results.txt`).
 
 ## 10. Evaluation
 
@@ -499,8 +505,11 @@ S0 prints the free space in both. If `/tmp` has less than 15 GB free, extract fe
 | R4 | Text on **real** transcripts (the text upper bound) |
 | R5 | Text on **Whisper** transcripts (realistic) |
 | R6 | Text, ablation T (trained on real transcripts only), tested on Whisper transcripts |
-| R7 | **Fused, with Whisper transcripts: the deployed system** |
-| R8 | Fused, with real transcripts (reference) |
+| R7 | **Fused, with Whisper transcripts**: sound seed *i* fused with text seed *i* at the deployed weight, mean ± sd over *i* |
+| R8 | Fused, with real transcripts (reference), same pairing |
+| R9 | **The deployed system**: the deployed models, temperatures and weight, on Whisper transcripts (a single run) |
+
+Every trained row reports the mean ± sd over its 3 seeds. The acceptance criteria use these means.
 
 ### 10.3 Other checks
 
@@ -508,8 +517,13 @@ S0 prints the free space in both. If `/tmp` has less than 15 GB free, extract fe
 
 **10.4 CPU latency.**
 - Measured on the laptop, **plugged in**, on a 5 s clip.
+- Before timing, check that the laptop is on mains power; ask the user only if it is on battery.
 - 2 warm-up runs, then 20 timed runs.
 - Report the median and 90th percentile per stage (decode, encode, transcribe, sound, text, fusion) and in total, plus the server's peak memory.
+
+**10.4b Calibration.** Expected calibration error (15 equal-width bins) and a reliability diagram for the fused output on test, before and after temperature scaling (§8.4).
+
+**10.4c Offline check.** With Wi-Fi switched off and `HF_HUB_OFFLINE=1`, the server starts and analyses a clip on localhost. The user runs `scripts/offline_check.ps1` while the Claude Code session is idle, because the session itself needs the internet. The script writes `results/offline_check.txt`.
 
 **10.5 CPU parity.**
 - Compare the CPU int8 pipeline with the Kaggle fp16 results on MELD dev.
@@ -522,7 +536,7 @@ S0 prints the free space in both. If `/tmp` has less than 15 GB free, extract fe
 - **Instruction**, identical for every clip: "Classify the speaker's emotion into exactly one of: anger, disgust, fear, joy, neutral, sadness, surprise. Answer with the label only."
 - **How it is run:**
   - Gemini, through the free API with a key the user puts in `.env`, using the `google-genai` package; record the model name used.
-  - Or, if the user chooses, ChatGPT by hand, with each answer logged in `results/chatbot_raw.csv`.
+  - Fallback, only if the free API is unavailable: ChatGPT by hand, with each answer logged in `results/chatbot_raw.csv`.
 - **Report:** accuracy and weighted-F1 next to ours, the latency, and the fact that it is online and not private.
 - **Never send MELD clips** (copyright).
 
@@ -550,18 +564,20 @@ Typical fusion gains reported on MELD are +0.5 to +2.5 points.
 | AC-01 | MELD joins to 9,988 / 1,108 / 2,610 audio–label pairs | Loader assertion and a test |
 | AC-02 | WER reported for dev and test in both windows, and the window chosen by the §8.1 rule | `insights.md`, `decision.json` |
 | AC-03 | Sound only (R1), MELD test weighted-F1 ≥ 40.0 (mean of 3 seeds) | Results table |
-| AC-04 | Text on real transcripts (R4) ≥ 58.0 | Results table |
-| AC-05 | Fused, with Whisper transcripts (R7), ≥ 52.0 **and** ≥ text on Whisper transcripts (R5) | Results table |
+| AC-04 | Text on real transcripts (R4) ≥ 58.0 (mean of 3 seeds) | Results table |
+| AC-05 | Fused, with Whisper transcripts (R7), ≥ 52.0 **and** ≥ text on Whisper transcripts (R5), both as seed means | Results table |
 | AC-06 | Every model row beats the majority baseline (31.3 weighted-F1) | Results table |
 | AC-07 | CPU parity: weighted-F1 difference ≤ 1.5 points on dev | §10.5 report |
 | AC-08 | Latency: median ≤ 2.0 s per 5 s clip, end to end, laptop plugged in. Stretch: ≤ 1.2 s | `latency.py` output |
 | AC-09 | Server peak memory ≤ 2.5 GB | `latency.py` output |
 | AC-10 | Own recordings evaluated, and the chatbot comparison done on the same clips | `results/` tables |
 | AC-11 | API tests pass: normal clip, silence, long recording (segmented), unsupported format, too large, too short | `pytest` |
-| AC-12 | App reachable from a phone on the same Wi-Fi over HTTPS, and analysis works (upload and record). The optional internet link works if enabled | Deployment check in `insights.md` |
+| AC-12 | App reachable from a phone on the same Wi-Fi over HTTPS, and analysis works (upload and record). The optional internet link works if enabled | The server access log, and the deployment check in `insights.md` |
 | AC-13 | No MELD audio in git or in the demo samples; no banned checkpoint anywhere in the code | Test that scans the repository and config |
 | AC-14 | README lets a new user install, run, train (via `KAGGLE.md`) and deploy from scratch | Manual check in Phase 10 |
 | AC-15 | Transcript exported and converted to `transcript.html` with Turn N headings and collapsed responses | Phase 10 |
+| AC-16 | Fused test calibration error reported before and after temperature scaling, with the reliability diagram | `results/calibration.md` |
+| AC-17 | With Wi-Fi off and `HF_HUB_OFFLINE=1`, the server starts and analyses a clip on localhost | Offline check in `insights.md` |
 
 Criteria that fail are reported honestly with the measured value. They are never hidden.
 
@@ -576,9 +592,12 @@ Criteria that fail are reported honestly with the measured value. They are never
   It uses a single worker, because the work is CPU-bound and memory is limited. The models load once at start-up.
 - **One-click start:** `scripts/serve.ps1`. It activates the virtual environment, checks the models are present, starts the server, and prints the LAN and localhost URLs.
 - **Certificate:** `scripts/make_cert.py` (using `cryptography`) creates a self-signed certificate. Its Subject Alternative Names cover `localhost`, `127.0.0.1` and the laptop's current LAN IP address. `certs/` is git-ignored. On the phone, accept the browser warning once; the microphone then works. Verify this in Phase 9, and fall back to upload if it doesn't.
+- **Network:** Windows must treat the Wi-Fi as a **Private** network, because the firewall rule applies only there. Campus Wi-Fi often blocks device-to-device traffic (client isolation). If the phone cannot reach the laptop, put both on a phone hotspot, or use the tunnel.
 - **Firewall:** one inbound rule for TCP 8443 on the Private profile. It is run by the user in an administrator PowerShell; the exact line goes in the README.
 - **Optional internet link:** `scripts/tunnel.ps1` runs `cloudflared tunnel --url https://localhost:8443 --no-tls-verify`. That is a quick tunnel with a random `trycloudflare.com` HTTPS address, which lasts only while it runs. `cloudflared` is already installed.
 - **Smoke check:** `scripts/smoke.ps1` calls `/api/health` and `/api/analyze` through the real LAN address.
+- **Offline check:** `scripts/offline_check.ps1` sets `HF_HUB_OFFLINE=1`, starts the server, analyses a demo clip on localhost, writes `results/offline_check.txt` and stops the server. The user runs it with Wi-Fi off (§10.4c).
+- **Access log:** the app writes one line per request to the git-ignored `logs/server.log`: time, client IP, user agent, endpoint, status and processing time, plus Cloudflare's `CF-Connecting-IP` header when present. The deployment check (AC-12) reads it to confirm the phone's requests over Wi-Fi and through the tunnel.
 - **Content:** demo samples are only the user's own recordings, with consent. Citations are shown in the About panel.
 - **Documentation:** `README.md` gets a "Running in production" section, with the working directory before every command.
 
@@ -595,17 +614,20 @@ emotion-analyzer/
 ├── insights.md               results, figures, decisions with numbers
 ├── requirements.txt          local CPU environment, pinned
 ├── requirements-kaggle.txt   Kaggle extras, pinned
-├── .gitignore                data/, models/, certs/, .env, .venv/, kaggle/code/, __pycache__/
+├── .gitignore                data/, models/, certs/, .env, .venv/, kaggle/code/, __pycache__/, app/static/samples/, logs/
+├── pyproject.toml            package metadata (src layout), pytest `slow` marker
+├── .githooks/pre-commit      runs the fast tests; enabled with `git config core.hooksPath .githooks`
 ├── .env.example              GEMINI_API_KEY= (empty)
 ├── src/emotion_analyzer/     __init__.py, config.py, data.py, speech.py, features.py, sound_model.py,
 │                             text_model.py, fusion.py, metrics.py, transcribe.py, evaluate.py,
 │                             latency.py, chatbot_compare.py
-├── app/                      main.py, static/index.html, static/app.js, static/style.css
-├── scripts/                  package_kaggle.py, serve.ps1, tunnel.ps1, make_cert.py, smoke.ps1
+├── app/                      main.py, static/index.html, static/app.js, static/style.css, static/samples/ (git-ignored demo clips)
+├── scripts/                  package_kaggle.py, serve.ps1, tunnel.ps1, make_cert.py, smoke.ps1, offline_check.ps1
 ├── kaggle/code/              built by package_kaggle.py (git-ignored)
-├── models/                   sound_head.pt, sound_head.json, text_model/, fusion.json, decision.json (git-ignored)
-├── data/                     meld/dev/, own/ (git-ignored)
-├── results/                  tables (.csv/.md), figures (.png, 150 dpi), metrics.json (committed)
+├── models/                   sound_head.pt, sound_head.json, text_model_seed{0,1,2}/, fusion.json, decision.json (git-ignored)
+├── data/                     meld/dev/, own/ (with demo_ok.txt), kaggle/ (git-ignored)
+├── results/                  aggregate tables (.csv/.md), figures (.png, 150 dpi), metrics.json (committed)
+├── logs/                     server.log, the app's access log (git-ignored)
 ├── tests/                    test_data.py, test_speech.py, test_models.py, test_fusion.py,
 │                             test_metrics.py, test_api.py, test_repo_rules.py
 └── tools/                    transcript_to_html.py
@@ -617,17 +639,17 @@ emotion-analyzer/
 
 | Phase | Deliverables | Done when |
 |---|---|---|
-| P1 Scaffold | Folder tree (§13), `.venv` from `py -3.12`, pinned requirements, `.gitignore`, README stub, `config.py` | `pytest` runs (empty or trivial tests pass); first commit |
+| P1 Scaffold | Folder tree (§13), `.venv` from `py -3.12`, pinned requirements, `pyproject.toml`, `.githooks/pre-commit`, `.gitignore`, README stub, `config.py` | `pytest` runs (trivial tests pass) and the hook runs them on commit |
 | P2 Data | `data.py`: MELD dev downloaded locally, the join with defects, label maps for CREMA-D and RAVDESS, own-recordings loader. A short data report in `insights.md` | AC-01 logic tested on dev (1,108 pairs); label-map tests pass |
-| P3 Speech pipeline | `speech.py` (shared pass, both windows, VAD segmentation, timing). WER on 300 local dev clips in both windows, and per-stage CPU times | Numbers in `insights.md`; preliminary window rule evaluated; tests pass |
+| P3 Speech pipeline | `speech.py` (shared pass, both windows, VAD on every clip, chunked transcription of long clips, timing). WER on 300 local dev clips in both windows; per-stage and end-to-end CPU times | Numbers in `insights.md`; preliminary window rule evaluated; model size (small.en or base.en) settled against AC-08; tests pass |
 | P4 Training code | `features.py`, `sound_model.py`, `text_model.py`, `fusion.py`, `metrics.py`, `transcribe.py`, smoke-tested locally on a few dev clips with tiny settings | Every stage's code runs end to end locally on tiny settings |
 | P5 Kaggle package | `scripts/package_kaggle.py` → `kaggle/code/`; `requirements-kaggle.txt`; `KAGGLE.md` with the inputs and settings, the two-pass run from §9.1 (the interactive S0 check, then the Save & Run All commit), cells S0–S8 with expected output and run time, how to resume from a previous version's output, and how to download the results; a local dry-run of the cell sequence on a tiny subset | Dry-run passes; the GPU-hours estimate is stated |
 | — | **User runs S0 interactively, then commits the notebook (Save & Run All)** | `emotion_outputs.zip` downloaded from the version's Output tab |
-| P6 Import and parity | Outputs unpacked into `models/` and `results/`; the CPU int8 parity check on dev | AC-07 checked; training results in `insights.md` |
-| P7 Evaluation | Fusion weight; the full results table (§10.2) with CIs; latency; own recordings; chatbot comparison; error analysis; figures | AC-02 to AC-10 checked and reported |
-| P8 App | FastAPI app and UI (§5), API tests | AC-11 passes; the user tries the app locally |
-| P9 Deployment | Certificate, serve, tunnel and smoke scripts; firewall instructions; README "Running in production" | AC-12 verified from a phone |
-| P10 Wrap-up | README complete; spec matches the build; final test run; transcript tools | AC-13 to AC-15 |
+| P6 Import and parity | The zip moved from Downloads into `data/kaggle/` and unpacked (models into `models/`, aggregates into `results/`); temperatures and fusion weight fitted on dev; the CPU int8 parity check on dev | AC-07 checked; training results in `insights.md` |
+| P7 Evaluation | The full results table (§10.2) with CIs and seed means; calibration; latency; own recordings; chatbot comparison; error analysis; figures | AC-02 to AC-10 and AC-16 checked and reported |
+| P8 App | The text-ensemble rule (§8.3) applied; FastAPI app and UI (§5) with demo samples; API tests | AC-11 passes; the user tries the app locally |
+| P9 Deployment | Certificate, serve, tunnel and smoke scripts; firewall and network instructions; offline check; README "Running in production" | AC-12 verified from a phone; AC-17 checked |
+| P10 Wrap-up | README complete; spec matches the build; final test run; transcript converter built against the trial export | AC-13 to AC-15 |
 
 ## 15. Working rules for the build (copy into CLAUDE.md)
 
@@ -638,7 +660,7 @@ emotion-analyzer/
   - note problems in `issues.md`;
   - note results and figures in `insights.md`;
   - commit.
-- Tests are the acceptance criteria. Every phase ends with tests that pass. The git pre-commit hook runs the fast tests (under 60 s, no model downloads). Tests that need model weights are marked `slow`.
+- Tests are the acceptance criteria. Every phase ends with tests that pass. The git pre-commit hook (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`) runs the fast tests (under 60 s, no model downloads). Tests that need model weights are marked `slow`.
 - Use only the project virtual environment (`py -3.12`). Never the system `python`.
 - Put the working directory on its own line before every command given to the user.
 - **Kaggle:**
@@ -649,6 +671,8 @@ emotion-analyzer/
 - Smoke-test locally on a tiny subset before any Kaggle run.
 - Never commit MELD audio, never use it as demo samples, and never use a banned checkpoint (§4.4).
 - Never print or commit secrets. Read keys from `.env`.
+- Tasks marked `USER` in `tasks.md` block the build: stop and ask. Tasks marked `USER-ANYTIME` don't: mention them in each phase summary until they're done, and stop only if a phase actually needs one that isn't done.
+- Before timing anything, check that the laptop is on mains power; ask only if it is on battery.
 
 ## 16. Risks and mitigations
 
@@ -661,6 +685,8 @@ emotion-analyzer/
 | CTranslate2 cannot load cuBLAS 12 or cuDNN 9 on the Kaggle image | S0 checks it in a subprocess before the commit. Fixes in §9.2: the pip NVIDIA libraries plus `LD_LIBRARY_PATH`, or `ctranslate2==4.4.0`. Final fallback: `transformers` Whisper on the GPU |
 | The interactive session times out during a long run | The main run is a background commit (§9.1); interactive use is limited to the S0 check |
 | A commit fails part-way | Stage markers, plus the previous version's output attached as an input, so finished stages are skipped (§9.3) |
+| Campus Wi-Fi blocks device-to-device traffic, or Windows treats the network as Public | Set the network to Private. If the phone still can't connect, use a phone hotspot or the tunnel for AC-12 |
+| The `/export` format, or its behaviour after context compaction, is unknown until tried | A trial export at the end of the first sitting; the converter is built against it; the session's `.jsonl` log is the fallback source |
 | The Hugging Face download fails on Kaggle | Fallback input `ngocson2002/meld-datasetv2` |
 | Class imbalance (fear and disgust about 2.7% of train) | Class-weighted loss. Report macro-F1 too |
 | The same cast in every split (speaker-dependent) | The own-recordings test of new voices |
@@ -669,13 +695,13 @@ emotion-analyzer/
 | *Friends* audio is copyrighted | No MELD audio in the repository or the demo; the Kaggle copy is private |
 | Chatbot free-tier limits or changes | Record the model and date. Manual ChatGPT fallback |
 
-## 17. Open decisions (defaults chosen; change them here before or during the build)
+## 17. Decisions (settled in v1.1)
 
-| Decision | Default | Alternatives |
+| Decision | Settled as | Alternative not taken |
 |---|---|---|
 | Internet link | Optional Cloudflare quick tunnel, on demand | Local network only |
-| Chatbot comparison | Gemini free API | ChatGPT by hand |
-| Text model at inference | Best single seed | Ensemble of 3 seeds (about +0.15 s) |
+| Chatbot comparison | Gemini free API (ChatGPT by hand only if the API is unavailable) | ChatGPT by hand |
+| Text model at inference | The rule in §8.3, applied in Phase 8 | Fixed single seed or fixed ensemble |
 | Overall label for multi-segment audio | Duration-weighted mean of fused probabilities | Majority vote of the segments |
 | Disagreement threshold | Both confidences ≥ 0.40 | 0.30 or 0.50 |
 
@@ -718,3 +744,4 @@ emotion-analyzer/
 | Version | Date | Change | Reason |
 |---|---|---|---|
 | 1.0 | 2026-10-20 | Initial specification | — |
+| 1.1 | 2026-10-20 | Accepted the 15 findings from the spec review in `tasks.md`: calibration and an offline check added (F1; AC-16, AC-17); all three text seeds exported and the ensemble chosen by a rule (F2); per-utterance outputs kept out of git (F3); VAD on every clip (F4); seed means for every trained row, plus a deployed-system row (F5); model size settled in Phase 3 (F6); chunked transcription of long clips (F7); resume searches every attached input (F8); fusion weight and temperatures fitted at the start of Phase 6 (F9); WER wording corrected (F10); `pyproject.toml` and a versioned pre-commit hook (F11); demo-sample folder (F12); Wi-Fi isolation risk (F13); trial export (F14); Gemini consent (F15). Settled every §17 decision. Kaggle zip goes from Downloads to `data/kaggle/`. Hand-offs go through files instead of pasted text: `s0_check.txt`, `logs/final_results.txt` in the zip, the server access log and `results/offline_check.txt` | Spec review before the build; avoids a second Kaggle run and unnecessary stops during the build |
