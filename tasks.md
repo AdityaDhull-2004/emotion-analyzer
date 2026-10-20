@@ -56,22 +56,22 @@ Then the build carries straight on to the next phase.
 ## P1 Scaffold
 
 - [x] `.gitignore`: the initial §13 entries (created with the plan commit)
-- [ ] `.gitignore`: add `app/static/samples/` and `logs/`
-- [ ] Folder tree from §13:
+- [x] `.gitignore`: add `app/static/samples/` and `logs/`
+- [x] Folder tree from §13:
   - `src/emotion_analyzer/`, `app/static/samples/`, `scripts/`, `tests/`, `tools/`, `results/`
   - `data/meld/dev/`, `data/own/`, `data/kaggle/`, `models/`, `kaggle/code/`
-- [ ] `.venv/` built with `py -3.12` (never the 3.14 `python` on PATH)
-- [ ] `requirements.txt`: the local CPU environment, pinned (CPU-only torch, faster-whisper, transformers, FastAPI, uvicorn, jiwer, ftfy, scikit-learn and the rest)
-- [ ] `pyproject.toml`: src layout and the pytest `slow` marker; editable install into `.venv` (F11)
-- [ ] `.githooks/pre-commit` running the fast tests, enabled with `git config core.hooksPath .githooks` (F11)
-- [ ] `.env.example` containing an empty `GEMINI_API_KEY=`
-- [ ] `src/emotion_analyzer/__init__.py` and `config.py`, holding:
+- [x] `.venv/` built with `py -3.12` (never the 3.14 `python` on PATH)
+- [x] `requirements.txt`: the local CPU environment, pinned (CPU-only torch, faster-whisper, transformers, FastAPI, uvicorn, jiwer, ftfy, scikit-learn and the rest)
+- [x] `pyproject.toml`: src layout and the pytest `slow` marker; editable install into `.venv` (F11)
+- [x] `.githooks/pre-commit` running the fast tests, enabled with `git config core.hooksPath .githooks` (F11)
+- [x] `.env.example` containing an empty `GEMINI_API_KEY=`
+- [x] `src/emotion_analyzer/__init__.py` and `config.py`, holding:
   - the labels in the fixed order;
   - paths and the window;
   - the disagreement threshold (0.40) and the overall-label rule (duration-weighted);
   - the seeds (0, 1, 2)
-- [ ] `README.md` stub, plus empty `issues.md` and `insights.md`
-- [ ] `tests/test_repo_rules.py`: first trivial checks (label order, `.gitignore` entries). The full AC-13 scan comes in P10
+- [x] `README.md` stub, plus empty `issues.md` and `insights.md`
+- [x] `tests/test_repo_rules.py`: first trivial checks (label order, `.gitignore` entries). The full AC-13 scan comes in P10
 - **Done when:** `pytest` passes and the hook runs it on commit; commit "P1: scaffold".
 
 ## P2 Data

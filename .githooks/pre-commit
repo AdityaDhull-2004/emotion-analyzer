@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs the fast tests (everything not marked slow) before each commit.
+# Enabled with: git config core.hooksPath .githooks
+if [ -x .venv/Scripts/python.exe ]; then
+    PY=.venv/Scripts/python.exe
+else
+    PY=.venv/bin/python
+fi
+exec "$PY" -m pytest -q -m "not slow" -p no:cacheprovider

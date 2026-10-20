@@ -1,0 +1,5 @@
+# The hook runs under sh, which breaks on CRLF line endings.
+.githooks/* text eol=lf
+*.sh text eol=lf
+# Test fixtures are binary audio.
+*.wav binary

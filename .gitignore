@@ -5,3 +5,6 @@ certs/
 .venv/
 kaggle/code/
 __pycache__/
+app/static/samples/
+logs/
+*.egg-info/

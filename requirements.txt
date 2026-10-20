@@ -1,0 +1,42 @@
+# Local CPU environment for Python 3.12 (spec §4.1). Install into the project venv:
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#   .venv\Scripts\python.exe -m pip install -e .
+# torch comes from the CPU-only wheel index; the laptop has no CUDA GPU.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Models and audio
+torch==2.14.1+cpu
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+av==19.0.1
+onnxruntime==1.31.0
+transformers==5.20.2
+tokenizers==0.23.3
+safetensors==0.8.0
+huggingface_hub==2.2.0
+soundfile==0.14.0
+
+# Data, metrics and figures
+numpy==2.5.4
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+jiwer==4.0.0
+ftfy==6.3.1
+matplotlib==3.11.2
+
+# App and deployment
+fastapi==0.150.0
+starlette==1.9.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+cryptography==50.0.2
+psutil==7.2.2
+
+# Chatbot comparison (§10.7)
+google-genai==2.31.0
+python-dotenv==1.2.4
+
+# Tests
+pytest==9.1.1
+httpx==0.28.1
