@@ -174,22 +174,31 @@ def save(model, tok, out_dir, meta):
     (out_dir / "meta.json").write_text(json.dumps({"name": MODEL_NAME, **meta}, indent=2))
 
 
-def load_cpu_int8(model_dir):
-    """Load a saved model in fp32 and quantise its Linear layers to int8 (§8.3)."""
+def load_cpu(model_dir, precision="int8"):
+    """Load a saved model in fp32 on the CPU; with precision "int8", quantise its Linear
+    layers to int8 (§8.3)."""
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+    if precision not in ("int8", "fp32"):
+        raise ValueError(f"text precision must be 'int8' or 'fp32', not {precision!r}")
     tok = AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModelForSequenceClassification.from_pretrained(model_dir, dtype=torch.float32)
-    model = torch.ao.quantization.quantize_dynamic(model.eval(), {torch.nn.Linear},
-                                                   dtype=torch.qint8)
+    model = AutoModelForSequenceClassification.from_pretrained(model_dir, dtype=torch.float32).eval()
+    if precision == "int8":
+        model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
     return model, tok
 
 
-class TextClassifier:
-    """One quantised model, or the 3-seed ensemble (mean of the seeds' probabilities)."""
+def load_cpu_int8(model_dir):
+    return load_cpu(model_dir, "int8")
 
-    def __init__(self, model_dirs, max_length=64):
-        self.models = [load_cpu_int8(d) for d in model_dirs]
+
+class TextClassifier:
+    """One model, or the 3-seed ensemble (mean of the seeds' probabilities), on the CPU in
+    the configured precision."""
+
+    def __init__(self, model_dirs, max_length=64, precision=None):
+        self.precision = precision or config.TEXT_PRECISION
+        self.models = [load_cpu(d, self.precision) for d in model_dirs]
         self.max_length = max_length
         self.name = MODEL_NAME + ("" if len(model_dirs) == 1 else f" ensemble-{len(model_dirs)}")
 

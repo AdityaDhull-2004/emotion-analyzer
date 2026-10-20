@@ -1,10 +1,17 @@
 """Per-stage CPU timing benchmark (spec §10.4): 2 warm-up runs, then 20 timed runs on a
 5 s clip; median and 90th percentile per stage and in total, plus peak memory.
 
+By default it times the deployed system from models/ (`fusion.load_analyzer`), the same
+object the app serves, with the deployed text model or, with --text-seeds 0 1 2, the
+ensemble (§8.3); --text-precision fp32 times the text model unquantised. Peak memory is
+the process's peak working set, model loading included, which is what the single-worker
+server holds (AC-09).
+
 --preliminary (Phase 3) times the real speech stages and stands in for the untrained
 models with same-sized ones: an int8 RoBERTa-base with an untrained 7-way head and a
 random attention-pooling head. Run it on mains power.
 
+    python -m emotion_analyzer.latency --json results/latency.json --md results/latency.md
     python -m emotion_analyzer.latency --preliminary --windows 10 30
 """
 
@@ -122,6 +129,49 @@ def benchmark_preliminary(clip, windows, warmup=2, runs=20, model_size=config.AS
     return results
 
 
+def benchmark_deployed(clip, warmup=2, runs=20, text_seeds=None, text_precision=None):
+    """The deployed Analyzer on one clip: end-to-end totals are wall-clock per request."""
+    from . import fusion
+
+    t0 = time.perf_counter()
+    analyzer = fusion.load_analyzer(text_seeds, text_precision=text_precision)
+    load_s = time.perf_counter() - t0
+    for _ in range(warmup):
+        analyzer.analyze(str(clip))
+    timed = [analyzer.analyze(str(clip))["timing_ms"] for _ in range(runs)]
+    return summarize(timed), {**analyzer.models_info(), "text_precision": analyzer.text.precision}, load_s
+
+
+def markdown(report):
+    """results/latency.md (§10.4) with the AC-08 and AC-09 verdicts."""
+    st = report["stages_ms"]
+    total = st["total"]["median"] / 1000
+    peak = report["peak_memory_gb"]
+    ac08 = "pass" if total <= config.LATENCY_TARGET_S else "FAIL"
+    stretch = "met" if total <= 1.2 else "not met"
+    ac09 = "pass" if peak <= config.MEMORY_TARGET_GB else "FAIL"
+    m = report["models"]
+    lines = [
+        "# CPU latency (§10.4)", "",
+        f"Deployed system on the laptop CPU (Intel i7-1260P), on mains power: {report['mains_power']}. "
+        f"Clip `{report['clip']}` ({report['clip_s']:.2f} s); {report['warmup']} warm-up and "
+        f"{report['runs']} timed runs; {report['date']}.", "",
+        f"Models: {m['asr']}, {m['window_s']} s window; {m['sound']}; {m['text']} ({m['text_precision']}); "
+        f"fusion w_sound {m['fusion_w_sound']}.", "",
+        "| Stage | Median (ms) | p90 (ms) |", "|---|---:|---:|"]
+    lines += [f"| {k} | {v['median']:.0f} | {v['p90']:.0f} |" for k, v in st.items() if k != "total"]
+    lines += [f"| **total (end to end)** | **{st['total']['median']:.0f}** | **{st['total']['p90']:.0f}** |",
+              "", "`decode` includes the VAD pass. The total is wall-clock per request, so it also "
+              "covers the small gaps between stages.", "",
+              f"- Model loading: {report['load_s']:.1f} s, once at start-up.",
+              f"- Peak memory of the process (models loaded, then the timed runs): "
+              f"**{peak:.2f} GB**.", "",
+              f"**AC-08** (median ≤ {config.LATENCY_TARGET_S} s per 5 s clip): {total:.2f} s, "
+              f"**{ac08}**; the 1.2 s stretch target is {stretch}.  ",
+              f"**AC-09** (server peak memory ≤ {config.MEMORY_TARGET_GB} GB): {peak:.2f} GB, **{ac09}**."]
+    return "\n".join(lines) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--clip", default=str(config.FIXTURES_DIR / "speech_short.wav"))
@@ -130,7 +180,12 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--runs", type=int, default=20)
     ap.add_argument("--preliminary", action="store_true")
+    ap.add_argument("--text-precision", choices=["int8", "fp32"], default=None,
+                    help="text model precision (default: config.TEXT_PRECISION)")
+    ap.add_argument("--text-seeds", type=int, nargs="+", default=None,
+                    help="text seeds to load (default: the deployed ones in config.py)")
     ap.add_argument("--json", default=None, help="write the results here")
+    ap.add_argument("--md", default=None, help="write the markdown report here")
     args = ap.parse_args(argv)
 
     mains = on_mains_power()
@@ -138,7 +193,23 @@ def main(argv=None):
         print("WARNING: the laptop is on battery; timings are not valid for AC-08.",
               file=sys.stderr)
     if not args.preliminary:
-        ap.error("the full benchmark arrives in Phase 6; use --preliminary")
+        stages, models, load_s = benchmark_deployed(args.clip, args.warmup, args.runs, args.text_seeds,
+                                                    args.text_precision)
+        report = {"mode": "deployed", "clip": Path(args.clip).name,
+                  "clip_s": len(speech.decode(args.clip)) / config.SAMPLE_RATE,
+                  "date": time.strftime("%Y-%m-%d"), "mains_power": mains, "models": models,
+                  "load_s": round(load_s, 2), "peak_memory_gb": round(peak_memory_gb(), 3),
+                  "runs": args.runs, "warmup": args.warmup, "stages_ms": stages}
+        print("median/p90 ms  " + "  ".join(f"{k} {v['median']:.0f}/{v['p90']:.0f}"
+                                            for k, v in stages.items()))
+        print(f"peak memory {report['peak_memory_gb']:.2f} GB; load {load_s:.1f} s; "
+              f"text {models['text']}; mains power: {mains}")
+        for path, text in ((args.json, json.dumps(report, indent=2)),
+                           (args.md, markdown(report) if args.md else None)):
+            if path:
+                Path(path).parent.mkdir(parents=True, exist_ok=True)
+                Path(path).write_text(text, encoding="utf-8")
+        return
     t0 = time.perf_counter()
     res = benchmark_preliminary(args.clip, args.windows, args.warmup, args.runs, args.model)
     report = {"mode": "preliminary", "model": args.model, "clip": Path(args.clip).name,

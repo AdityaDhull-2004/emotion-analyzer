@@ -87,8 +87,13 @@ def test_text_model_tiny_training_and_int8(tmp_path):
                                                  batch_size=8, log=lambda *_: None)
     assert len(history) == 1
     text_model.save(model, tok, tmp_path / "text_model_seed0", {"seed": 0, "dev_wf1": best})
-    clf = text_model.TextClassifier([tmp_path / "text_model_seed0"])
+    clf = text_model.TextClassifier([tmp_path / "text_model_seed0"], precision="int8")
     probs = clf.predict_proba(["I am so happy!", ""])
     assert probs.shape == (2, 7) and np.allclose(probs.sum(1), 1.0, atol=1e-4)
     assert isinstance(clf.models[0][0].roberta.encoder.layer[0].attention.self.query,
                       torch.ao.nn.quantized.dynamic.Linear)
+    fp32 = text_model.TextClassifier([tmp_path / "text_model_seed0"], precision="fp32")
+    assert type(fp32.models[0][0].roberta.encoder.layer[0].attention.self.query) is torch.nn.Linear
+    assert np.allclose(fp32.predict_proba(["I am so happy!"]).sum(), 1.0, atol=1e-4)
+    with pytest.raises(ValueError):
+        text_model.TextClassifier([tmp_path / "text_model_seed0"], precision="fp16")

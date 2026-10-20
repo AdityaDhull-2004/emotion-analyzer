@@ -47,11 +47,11 @@ Then the build carries straight on to the next phase.
 
 ## User tasks to do in parallel
 
-- [ ] **USER-ANYTIME** **Needed by the Kaggle run:** Kaggle account phone-verified (required for Internet On)
+- [x] **USER-ANYTIME** **Needed by the Kaggle run:** Kaggle account phone-verified (required for Internet On)
 - [ ] **USER-ANYTIME** **Needed by P10:** at the end of the first sitting, run a trial `/export transcript-backup-1.md` (F14)
-- [ ] **USER-ANYTIME** **Needed by P7:** record 30–50 clips of 3–8 s, with at least 4 per emotion and varied everyday sentences, into `data/own/{emotion}_{nn}.{ext}`. The speakers' consent covers sending the clips to Gemini (F15).
-- [ ] **USER-ANYTIME** **Needed by P7:** copy `.env.example` to `.env` and add `GEMINI_API_KEY` (never paste it into the chat)
-- [ ] **USER-ANYTIME** **Needed by P8:** list the clips whose speakers agreed to be demo samples in `data/own/demo_ok.txt`, one file name per line
+- [x] **USER-ANYTIME** **Needed by P7:** record 30–50 clips of 3–8 s, with at least 4 per emotion and varied everyday sentences, into `data/own/{emotion}_{nn}.{ext}`. The speakers' consent covers sending the clips to Gemini (F15). *(28 clips, 4 per emotion, 3.5–6.7 s, M4A: two short of 30, noted in `issues.md`.)*
+- [x] **USER-ANYTIME** **Needed by P7:** copy `.env.example` to `.env` and add `GEMINI_API_KEY` (never paste it into the chat)
+- [x] **USER-ANYTIME** **Needed by P8:** list the clips whose speakers agreed to be demo samples in `data/own/demo_ok.txt`, one file name per line *(7 clips, one per emotion)*
 
 ## P1 Scaffold
 
@@ -156,32 +156,33 @@ Then the build carries straight on to the next phase.
 
 ## Kaggle run (between P5 and P6)
 
-- [ ] **USER** Upload `kaggle/code/` as the private dataset `emotion-analyzer-code`
-- [ ] **USER** Create the private notebook `emotion-analyzer-train`:
+- [x] **USER** Upload `kaggle/code/` as the private dataset `emotion-analyzer-code`
+- [x] **USER** Create the private notebook `emotion-analyzer-train`:
   - add `emotion-analyzer-code`, `ejlok1/cremad` and `uwrfkaggler/ravdess-emotional-speech-audio` as inputs;
   - set Accelerator GPU T4 ×2 and Internet On;
   - paste the cells from `KAGGLE.md`
-- [ ] **USER** Run only cells 1 and 2 (stage S0) in the editor, download `s0_check.txt` from the Output panel into `C:\Users\adity\Downloads`, and say so
-- [ ] Read `C:\Users\adity\Downloads\s0_check.txt` and check it against `KAGGLE.md` (the CUDA subprocess test, free disk, the re-estimated times), then give the go-ahead or the fix
-- [ ] **USER** Save Version → Save & Run All (Commit). If it fails part-way, follow the resume steps in `KAGGLE.md`.
-- [ ] **USER** Download `emotion_outputs.zip` into `C:\Users\adity\Downloads` and say so
+- [x] **USER** Run only cells 1 and 2 (stage S0) in the editor, download `s0_check.txt` from the Output panel into `C:\Users\adity\Downloads`, and say so *(not done as written: the user committed directly, so S0 ran inside the commit; specs.md §20, v1.3)*
+- [x] Read `C:\Users\adity\Downloads\s0_check.txt` and check it against `KAGGLE.md` (the CUDA subprocess test, free disk, the re-estimated times), then give the go-ahead or the fix *(read afterwards from `logs/s0_check.txt` in the outputs: CUDA subprocess test OK with ct2 on the GPU, 21 GB free in /kaggle/working, re-estimate 3.48 GPU-hours, verdict GO)*
+- [x] **USER** Save Version → Save & Run All (Commit). If it fails part-way, follow the resume steps in `KAGGLE.md`. *(finished in 1.87 h)*
+- [x] **USER** Download `emotion_outputs.zip` into `C:\Users\adity\Downloads` and say so *(the user extracted it into `models/emotion_outputs/`; P6 moved it to `data/kaggle/emotion_outputs/`)*
 - **Done when:** `emotion_outputs.zip` is in Downloads.
 
 ## P6 Import and parity
 
-- [ ] Move `emotion_outputs.zip` from Downloads into `data/kaggle/` and unpack it:
+- [x] Move `emotion_outputs.zip` from Downloads into `data/kaggle/` and unpack it *(arrived unpacked in `models/emotion_outputs/`; moved to `data/kaggle/emotion_outputs/`)*:
   - `sound_head.pt`, `sound_head.json`, `text_model_seed{0,1,2}/` and `decision.json` into `models/`;
   - `metrics.json` into `results/`;
   - transcripts and per-utterance predictions stay in `data/kaggle/` (F3)
-- [ ] Training results (`logs/final_results.txt` from the zip, per-run dev and test scores) → `insights.md`
-- [ ] `src/emotion_analyzer/latency.py` (§10.4): per-stage timing on a 5 s clip and peak memory, for the single-seed or ensemble text configuration
-- [ ] Text-ensemble rule (§8.3), before anything is fitted → `config.py` and `insights.md`:
+- [x] Training results (`logs/final_results.txt` from the zip, per-run dev and test scores) → `insights.md`
+- [x] `src/emotion_analyzer/latency.py` (§10.4): per-stage timing on a 5 s clip and peak memory, for the single-seed or ensemble text configuration
+- [x] Text-ensemble rule (§8.3), before anything is fitted → `config.py` and `insights.md` *(ensemble +0.73 < 1.0: seed 0 alone)*:
   - first, text-only weighted-F1 on the dev Whisper transcripts: the 3-seed ensemble (mean of the seeds' probabilities) against the best single seed;
   - only if the ensemble adds ≥ 1.0: check mains power, then run `latency.py` with the ensemble, which must still meet AC-08 and AC-09;
   - otherwise, or if it fails either: the best single seed
-- [ ] T_sound, T_text and the fusion weight fitted on the Kaggle dev probabilities of the deployed models → `models/fusion.json` (F1, F9)
-- [ ] `src/emotion_analyzer/evaluate.py`, the parity part: the CPU int8 pipeline on all of MELD dev (features, transcripts, the deployed quantised text model), and the weighted-F1 comparison for sound, text and fused → `results/parity.md` (aggregates only)
-- [ ] Only if the sound gap is over 1.5 points: retrain the head on local CPU-int8 features (§16) → `models/sound_head.pt`
+- [x] *(Added at the user's request)* Check mains power, then run `latency.py` with the text model in fp32; if it still meets AC-08 and AC-09, deploy it in fp32 (§8.3, v1.3) *(1.71 s median, 1.40 GB peak: fp32 deployed)*
+- [x] T_sound, T_text and the fusion weight fitted on the deployed models' dev probabilities (the sound head's Kaggle dev probabilities; the text model's CPU outputs in its deployed precision on Kaggle's dev Whisper transcripts, §8.4 v1.3) → `models/fusion.json` (F1, F9) *(T_sound 0.814, T_text 1.009, w_sound 0.75)*
+- [x] `src/emotion_analyzer/evaluate.py`, the parity part: the CPU int8 pipeline on all of MELD dev (features, transcripts, the deployed text model), and the weighted-F1 comparison for sound, text and fused → `results/parity.md` (aggregates only) *(+0.63 / +0.21 / −0.93: pass)*
+- [x] Only if the sound gap is over 1.5 points: retrain the head on local CPU-int8 features (§16) → `models/sound_head.pt` *(not needed: +0.63)*
 - **Done when:** AC-07 is checked, the deployed text model is recorded, and the training results are in `insights.md`. AC-07: CPU parity, a weighted-F1 difference of at most 1.5 points on dev.
 
 ## P7 Evaluation

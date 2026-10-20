@@ -1,0 +1,36 @@
+{
+  "n": 1106,
+  "max_gap": 1.5,
+  "text_precision": "fp32",
+  "rows": {
+    "sound": {
+      "kaggle": 53.13,
+      "cpu": 53.76,
+      "gap": 0.63,
+      "pass": true
+    },
+    "text": {
+      "kaggle": 50.3,
+      "cpu": 50.51,
+      "gap": 0.21,
+      "pass": true
+    },
+    "fused": {
+      "kaggle": 55.66,
+      "cpu": 54.73,
+      "gap": -0.93,
+      "pass": true
+    }
+  },
+  "label_agreement": {
+    "sound": 98.4,
+    "text": 97.2
+  },
+  "text_cpu_on_kaggle_transcripts": 50.19,
+  "identical_transcripts_pct": 87.3,
+  "wer": {
+    "kaggle": 26.03,
+    "cpu": 26.07
+  },
+  "pass": true
+}

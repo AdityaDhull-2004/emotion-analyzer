@@ -30,3 +30,17 @@ Known problems and errors, newest at the bottom of each phase.
 - A batch of 32 full 30 s windows on the laptop CPU uses more memory than is free (attention scores alone are about 3.4 GB). The process dies silently with exit code 127 and an empty log. The cells now use `BATCH = 16` on Kaggle (fp16 on a 15 GB T4) and 4 in the dry run. The error messages say that an empty log usually means out of memory.
 - In the dry run, train and test are copies of the same dev clips, so the three splits show the same WER. That is expected; the rehearsal checks the plumbing, not the numbers.
 - On the laptop CPU, S0's re-estimate is about 18 GPU-hours and the verdict reads CHECK. Only Kaggle's T4 numbers count for the go-ahead.
+
+## Kaggle run
+
+- The interactive S0 pass was skipped: the user committed the notebook directly. It worked because S0 printed GO inside the commit, but a failed CUDA check would only have shown up after the full run had used the transformers fallback. Recorded in `specs.md` §20 (v1.3).
+- The outputs were unpacked into `models/emotion_outputs/` instead of being left as a zip in Downloads. P6 moved the folder to `data/kaggle/emotion_outputs/`, where per-utterance data belongs (F3).
+- Kaggle's image runs Python 3.13.15 and torch 2.11.0, against 3.12.10 and torch 2.14.1 on the laptop. The text models saved there load unchanged here (transformers 5.20.2 on both sides), and fp32 CPU outputs match the Kaggle ones on 99.9% of dev clips.
+- Twelve MELD train clips are under 0.1 s and were dropped in S2 (`logs/S2_dropped.txt`), on top of the known missing `dia125_utt3`.
+
+## P6 Import and parity
+
+- **int8 dynamic quantisation hurt the text model.** On dev it changed 14.8% of the text labels, cost 1.29 points of weighted-F1 (50.30 → 49.01) and dropped the mean top probability from 0.55 to 0.39. Its outputs also depended on batch composition (49.01 or 49.40 for the same sentences in a different order), because activations are quantised per batch. fp32 on the CPU matches Kaggle, so the text model is now deployed in fp32 (§8.3, v1.3), at about 10 ms more per clip and lower peak memory.
+- `tasks.md` said to fit the temperatures and weight on "the Kaggle dev probabilities"; for an int8 text model that would have left the deployed branch uncalibrated (test ECE 16.0). Corrected to the deployed models' dev probabilities, as §8.4 states. With fp32 the two coincide.
+- The P7 evaluation functions (`evaluate.py report/own`, `chatbot_compare.py`) were written while the 33-minute parity pass ran, so they share the P6 commit; P7 runs them and commits their results.
+- Bash here-documents again mangled backslashes and long Python snippets twice (a broken string literal in `latency.py`, a failed `tasks.md` edit). Fixed with the Edit tool and a script file in the scratchpad.

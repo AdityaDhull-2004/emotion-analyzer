@@ -155,6 +155,18 @@ class Analyzer:
         return response
 
 
+def load_analyzer(text_seeds=None, window_s=None, text_precision=None):
+    """The deployed system from models/ (§8): small.en int8 in the decided window, the
+    sound head, the text model (or the ensemble of `text_seeds`) in the configured
+    precision, and fusion.json."""
+    from . import sound_model, speech, text_model
+
+    pipe = speech.SpeechPipeline(window_s=window_s or config.WINDOW_S)
+    sound = sound_model.SoundClassifier(config.SOUND_HEAD_PATH)
+    text = text_model.TextClassifier(config.text_model_dirs(text_seeds), precision=text_precision)
+    return Analyzer(pipe, sound, text, load_params(config.FUSION_PATH), sound_name=sound.name)
+
+
 def load_predictions(*paths):
     """Average one or more .npz prediction files (ids, labels, probs) over the same ids:
     one file is a single seed, several are the ensemble mean (§8.3)."""
@@ -201,7 +213,9 @@ def main(argv=None):
     dev = {name: round(metrics.weighted_f1(labels, p.argmax(1)), 2)
            for name, p in (("sound", ps), ("text", pt), ("fused", fused))}
     save_params(args.out, params["t_sound"], params["t_text"], params["w_sound"],
-                {"n_dev": int(len(ids)), "dev_weighted_f1": dev, "grid": params["grid"]})
+                {"sound_dev": [Path(p).name for p in args.sound],
+                 "text_dev": [Path(p).name for p in args.text],
+                 "n_dev": int(len(ids)), "dev_weighted_f1": dev, "grid": params["grid"]})
     print(f"fusion: T_sound {params['t_sound']:.3f}, T_text {params['t_text']:.3f}, "
           f"w_sound {params['w_sound']}, dev wF1 {dev}")
 

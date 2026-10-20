@@ -92,3 +92,70 @@ Peak memory in that process was 1.86 GB, including loading RoBERTa in fp32 befor
   - `/kaggle/working` after pass 1 was 0.97 GB with 2 text seeds, so about 1.5 GB with 3, inside the 2 GB target (§9.5).
 - **Memory:** a batch of 32 full 30 s windows doesn't fit the laptop's free RAM and dies silently. The cells use `BATCH = 16` on Kaggle (fp16, 15 GB T4) and 4 in the dry run.
 - **GPU-hours:** about 3.2 GPU-hours and 2 h wall-clock (§9.4, stated in `KAGGLE.md`). S0 re-measures on the T4s and prints a go/check verdict against the 6 GPU-hour budget and the 11 h guard. On the laptop CPU it estimates about 18 GPU-hours and reads CHECK, as expected.
+
+## Kaggle run
+
+- **One pass instead of two.** The user committed the notebook directly with Save & Run All and skipped the interactive S0 check. S0 ran at the top of the commit and its report (`logs/s0_check.txt` in the outputs) was read afterwards:
+  - 2× Tesla T4 (15 GB each), 34 GB RAM, 21 GB free in `/kaggle/working`, 1,146 GB in `/tmp`;
+  - Python 3.13.15, torch 2.11.0+cu128; the pinned extras installed, with cuBLAS 12.8.4.1 and cuDNN 9.19.0.56;
+  - **CUDA subprocess test: OK, backend ct2 on the GPU**, so the transformers fallback wasn't needed (`metrics.json`: backend ct2, 2 GPUs);
+  - measured per clip: transcription 0.136 s (10 s window) and 0.126 s (30 s), features 0.062 s and 0.094 s, sound step 0.040 s, text step 0.093 s;
+  - re-estimate 3.48 GPU-hours and 1.89 h wall-clock against the 6 GPU-hour budget: GO.
+- **Actual run: 1.87 h**, every stage finished, nothing skipped. The zip was 731 MB unpacked.
+- **AC-01 on the full data:** S2's assertions passed, so MELD joined to 9,988 / 1,108 / 2,610 pairs. After dropping clips under 0.1 s (12 in train, 2 in dev, none in test), 9,976 / 1,106 / 2,610 clips were used. CREMA-D gave 7,441 clips and RAVDESS 1,440 after de-duplicating its two trees.
+- **Window (S4, case a):** WER(10 s) − WER(30 s) = +5.85 points on dev (31.88% against 26.03%), more than the 2.0 limit, so the window is **30 s**. On test the gap is +10.30 (43.68% against 33.38%). The 10 s window's extra errors are mostly insertions (test: 6,290 against 4,029).
+
+**Training results** (`logs/final_results.txt`; weighted-F1, seed mean ± sd; seeds in brackets are dev / test per seed):
+
+| Row | Run | Dev | Test | Per seed, dev / test |
+|---|---|---:|---:|---|
+| R0 | majority | – | 31.3 | – |
+| R1 | sound main | 52.3 ± 0.8 | 52.3 ± 0.4 | 52.37/52.07, **53.13**/52.17, 51.54/52.80 |
+| R2 | sound + acted (A) | 51.6 ± 0.8 | 50.9 ± 0.3 | 52.27/50.64, 50.69/51.17, 51.88/50.92 |
+| R3 | sound, 10 s window (W) | 51.2 ± 0.4 | 51.4 ± 0.9 | 51.40/52.46, 51.55/50.73, 50.76/50.89 |
+| R4 | text, real transcripts | 59.0 ± 2.0 | 61.5 ± 0.8 | 60.74/62.19, 59.49/61.63, 56.82/60.61 |
+| R5 | text, Whisper transcripts | 50.0 ± 0.2 | 52.3 ± 0.5 | **50.30**/52.64, 49.95/52.55, 49.89/51.80 |
+| R6 | text, real-only training (T) | 49.9 ± 0.7 | 52.1 ± 1.5 | 50.67/52.62, 49.41/50.39, 49.58/53.31 |
+
+- The sound branch is far above the expected 40–46 (§10.9): the frozen Whisper encoder carries lexical as well as acoustic information. Adding the acted corpora (A) costs 1.4 points on test, and the 10 s window's features (W) cost 0.9.
+- The sound heads stop early: best dev epoch 2–5, stopped at 8–11 epochs (patience 6). The main text seeds peak at epoch 1–2 on dev Whisper transcripts and then overfit; real-only training (T) peaks later (epoch 2–5).
+- Training on Whisper transcripts as well as real ones (R5 against R6) gains only +0.2 on test, within the seed spread.
+- Kaggle's provisional fusion (per-seed weight and temperatures fitted on dev) gave 55.1 ± 0.5 on test.
+
+## P6 Import and parity
+
+- **Import.** The outputs moved from `models/emotion_outputs/` to `data/kaggle/emotion_outputs/`. `sound_head.pt` and `.json` (main seed 1, dev 53.13, 10 epochs), `text_model_seed{0,1,2}/` (fp16 safetensors, 249 MB each) and `decision.json` were copied into `models/`, and `metrics.json` into `results/`. Transcripts and per-utterance predictions stay in `data/kaggle/`.
+- **Text-ensemble rule (§8.3)**, on the Kaggle dev Whisper-transcript predictions: seeds 50.30 / 49.95 / 49.89, ensemble 51.03, so the gain over the best seed (seed 0) is **+0.73 < 1.0**. The deployed text model is **seed 0 alone** (`config.TEXT_SEEDS_DEPLOYED`), and the ensemble latency check isn't run. For reference, the ensemble's test score would have been 52.79 against 52.64.
+- **Text precision on the CPU.** The spec planned int8 dynamic quantisation (§8.3). Measured on the dev Whisper transcripts with seed 0:
+
+  | Text model, seed 0 | Weighted-F1 | Same label as Kaggle | Mean top probability | ECE |
+  |---|---:|---:|---:|---:|
+  | Kaggle, fp16 on the GPU | 50.30 | – | 0.547 | 3.77 |
+  | Laptop, fp32 on the CPU | 50.19 | 99.9% | 0.547 | 3.96 |
+  | Laptop, int8 per-tensor (the v1.0 plan) | 49.01–49.40 | 85.2% | 0.388 | 13.56 |
+  | Laptop, int8 per-channel weights (tried) | 49.97 | 84.3% | 0.397 | 13.82 |
+
+  - Int8 flattens the probabilities, and per-channel weights don't fix that, so the activation quantisation is the cause.
+  - Int8 results also depend on batching: the activation scale is per batch, so the same sentences scored in a different order gave 49.01 and 49.40. The app scores one sentence at a time.
+  - First step (v1.3): kept int8 and fitted T_text on the int8 outputs: T_text 0.656, w_sound 0.60, dev fused 54.67. On test that gave R9 54.58, against 53.71 with the fp16-fitted temperature, and text ECE 5.9 against 16.0.
+  - **Final (v1.3, the user's decision):** time fp32 on mains power and deploy it if it keeps AC-08 and AC-09. It does (2 warm-up and 20 timed runs on the 5 s fixture, same session):
+
+    | Text model | Median total | p90 | Text stage | Peak memory |
+    |---|---:|---:|---:|---:|
+    | int8 | 1,566 ms | 1,721 ms | 19 ms | 1.90 GB |
+    | **fp32 (deployed)** | **1,714 ms** | **1,762 ms** | 29 ms | **1.40 GB** |
+
+    The text stage costs 10 ms more; most of the 150 ms total gap is run-to-run noise in the Whisper encode (1,177 against 1,284 ms). fp32 uses less memory because nothing is quantised after loading. `config.TEXT_PRECISION = "fp32"`.
+- **Temperatures and weight (§8.4)**, fitted on the deployed models' dev probabilities: the sound head's Kaggle dev probabilities, and the fp32 text model's CPU outputs on Kaggle's dev Whisper transcripts. **T_sound 0.814, T_text 1.009, w_sound 0.75**; dev weighted-F1 sound 53.13, text 50.19, fused **55.58** → `models/fusion.json`. No temperature is at a bound. This matches the fit on Kaggle's fp16 text probabilities (kept as `fp16_text_reference`), as expected when fp32 reproduces fp16.
+- **CPU parity (AC-07): pass** (`results/parity.md`). The full laptop path ran on all 1,106 dev clips: small.en int8 encode, frames and transcript from one shared encode per clip, sound head, fp32 text model. 1.81 s per clip, 33 minutes.
+
+  | Branch | Kaggle fp16 | Laptop CPU | Difference |
+  |---|---:|---:|---:|
+  | sound | 53.13 | 53.76 | +0.63 |
+  | text | 50.30 | 50.51 | +0.21 |
+  | fused | 55.66 | 54.73 | −0.93 |
+
+  - The same label on both paths: sound 98.4% of clips, text 97.2% (83.8% with int8). Transcripts are 87.3% identical, and WER is 26.03% on Kaggle against 26.07% on the laptop.
+  - The sound gap is under 1.5, so the head isn't retrained (§16).
+  - With int8 text, parity also passed (sound +0.63, text +0.20, fused −0.91).
+- `latency.py` times the deployed system (`fusion.load_analyzer`, the object the app serves): 2 warm-up and 20 timed runs, per-stage median and p90, and peak memory. `--text-seeds 0 1 2` times the ensemble and `--text-precision` either precision.

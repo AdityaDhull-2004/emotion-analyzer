@@ -70,6 +70,26 @@ OVERALL_RULE = "duration_weighted"
 FUSION_WEIGHT_GRID = [round(0.05 * i, 2) for i in range(21)]
 ENSEMBLE_MIN_GAIN = 1.0  # text-only weighted-F1 points on dev Whisper transcripts (§8.3)
 
+# Deployed models (§8.2-§8.4), copied into models/ from the Kaggle outputs in Phase 6.
+SOUND_HEAD_PATH = MODELS_DIR / "sound_head.pt"
+FUSION_PATH = MODELS_DIR / "fusion.json"
+# The text-ensemble rule (§8.3), applied at the start of Phase 6 on the Kaggle dev
+# Whisper-transcript predictions: the 3-seed ensemble scored 51.03 weighted-F1 against
+# 50.30 for the best single seed (seed 0), a gain of +0.73, short of ENSEMBLE_MIN_GAIN.
+# So the deployed text model is seed 0 alone, and the ensemble latency check is not run.
+TEXT_SEEDS_DEPLOYED = (0,)
+# The text model runs on the CPU in int8 (dynamic quantisation) or fp32 (§8.3). Phase 6
+# chose fp32: int8 cost 1.3 points of dev weighted-F1, flattened the probabilities and
+# made each sentence's output depend on the batch it was scored in, while fp32 matched
+# Kaggle on 99.9% of dev labels and still met AC-08 and AC-09 on mains power (median
+# 1.71 s per 5 s clip and 1.40 GB peak, against 1.57 s and 1.90 GB in int8).
+TEXT_PRECISION = "fp32"
+
+
+def text_model_dirs(seeds=None):
+    return [MODELS_DIR / f"text_model_seed{s}"
+            for s in (TEXT_SEEDS_DEPLOYED if seeds is None else seeds)]
+
 # Training and evaluation
 SEEDS = (0, 1, 2)
 BOOTSTRAP_RESAMPLES = 1000

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.2 (approved for build; changes in §20) |
+| Version | 1.3 (approved for build; changes in §20) |
 | Date | 2026-10-20 |
 | Course | Applied Data Science and AI (UMC 301), project 4 |
 | Method | Spec-driven development. This file is the source of truth; every change goes through the change log (§20) |
@@ -67,7 +67,7 @@ What it does better than a general chatbot. Every point here is **measured in §
 
 **Inference: the laptop.**
 - Windows 11, Intel i7-1260P, CPU only (PyTorch cannot use the Iris Xe GPU).
-- 16 GB RAM, but often only about 3 GB free. So models are int8 where possible, loaded once, and the server's peak memory stays at or below 2.5 GB.
+- 16 GB RAM, but often only about 3 GB free. So models are int8 where that costs no accuracy, loaded once, and the server's peak memory stays at or below 2.5 GB. (Whisper runs in int8; the text model runs in fp32, §8.3.)
 
 **Local Python:**
 - A project virtual environment built from `py -3.12`.
@@ -214,7 +214,7 @@ frames = np.array(enc)[0, :ceil(duration_s / 0.02)]        # valid frames only; 
 | `speech.py` | `SpeechPipeline`: decode, VAD segmentation, the shared encode, transcript from the encoder output, valid frames, per-stage timing |
 | `features.py` | Batch encoder-frame extraction and fp16 sharded caching, for Kaggle and local use |
 | `sound_model.py` | The attention-pooling head; training loop; inference |
-| `text_model.py` | RoBERTa classifier; training loop; int8 dynamic quantisation; inference |
+| `text_model.py` | RoBERTa classifier; training loop; CPU inference in fp32 (int8 dynamic quantisation available); inference |
 | `fusion.py` | Weighted log-probability fusion, weight search, the disagreement rule |
 | `metrics.py` | Weighted-F1, macro-F1, accuracy, per-class report, confusion matrix, bootstrap confidence intervals, WER |
 | `transcribe.py` | Batch transcription of MELD and WER in both windows |
@@ -357,7 +357,7 @@ LayerNorm(768) → Linear(768, 256) → GELU → Dropout(0.2)
   - seeds {0, 1, 2}.
 - **Model selection:** dev weighted-F1 measured on **dev Whisper transcripts**, the condition the app runs in.
 - **Ablation T:** the same recipe trained on real transcripts only.
-- **Inference:** `torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)` on the CPU.
+- **Inference:** fp32 on the CPU (`config.TEXT_PRECISION`). Int8 dynamic quantisation, `torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)`, was the v1.0 plan; Phase 6 measured it and switched to fp32 (§20, v1.3), because int8 lost accuracy and fp32 still meets AC-08 and AC-09.
 - **Deployed model:** decided at the start of Phase 6, before the temperatures and the fusion weight are fitted (§8.4), by a fixed rule. Use the 3-seed ensemble (the mean of the three seeds' probabilities) only if:
   - it adds at least 1.0 point of text-only weighted-F1 on the dev Whisper transcripts over the best single seed; **and**
   - the end-to-end latency still meets AC-08; **and**
@@ -371,7 +371,7 @@ LayerNorm(768) → Linear(768, 256) → GELU → Dropout(0.2)
 log p_fused = w · log p_sound + (1 − w) · log p_text   →   softmax-renormalise
 ```
 
-- **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise dev weighted-F1. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts.
+- **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise dev weighted-F1. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts. The text model's dev probabilities are its CPU outputs in the deployed precision (fp32, §8.3), computed on the laptop from Kaggle's dev Whisper transcripts, because the precision can change the outputs (int8 flattened them). The sound head's are its Kaggle dev probabilities; the parity check (§10.5) covers the features.
 - **Calibration first:** before fusing, each model's log-probabilities are temperature-scaled with T_sound and T_text, each fitted on dev by minimising negative log-likelihood. The weight search then runs on the calibrated dev probabilities.
 - **When:** at the start of Phase 6, right after the text-ensemble rule (§8.3) has fixed the deployed text model, because the parity check needs the fused output.
 - **Saved:** `models/fusion.json`, holding both temperatures and the weight.
@@ -515,9 +515,9 @@ S0 prints the free space in both. If `/tmp` has less than 15 GB free, extract fe
 | R4 | Text on **real** transcripts (the text upper bound) |
 | R5 | Text on **Whisper** transcripts (realistic) |
 | R6 | Text, ablation T (trained on real transcripts only), tested on Whisper transcripts |
-| R7 | **Fused, with Whisper transcripts**: sound seed *i* fused with text seed *i* at the deployed weight, mean ± sd over *i* |
+| R7 | **Fused, with Whisper transcripts**: sound seed *i* fused with text seed *i* at the deployed weight, each model temperature-scaled with its own T fitted on dev, mean ± sd over *i* |
 | R8 | Fused, with real transcripts (reference), same pairing |
-| R9 | **The deployed system**: the deployed models, temperatures and weight, on Whisper transcripts (a single run) |
+| R9 | **The deployed system**: the deployed models, temperatures and weight, on Whisper transcripts (a single run). The text model runs on the laptop CPU, in its deployed precision, on Kaggle's test transcripts; MELD test audio isn't kept on the laptop (§7.4), so the CPU Whisper difference is covered by the parity check (§10.5) |
 
 Every trained row reports the mean ± sd over its 3 seeds. The acceptance criteria use these means.
 
@@ -710,7 +710,7 @@ emotion-analyzer/
 | The Hugging Face download fails on Kaggle | Fallback input `ngocson2002/meld-datasetv2` |
 | Class imbalance (fear and disgust about 2.7% of train) | Class-weighted loss. Report macro-F1 too |
 | The same cast in every split (speaker-dependent) | The own-recordings test of new voices |
-| Laptop has about 3 GB of free RAM | int8 models loaded once, a single worker, AC-09 |
+| Laptop has about 3 GB of free RAM | Whisper in int8, models loaded once, a single worker, AC-09 (1.40 GB measured peak) |
 | Browser microphone needs HTTPS | Self-signed HTTPS on the local network, tunnel HTTPS, upload as fallback |
 | *Friends* audio is copyrighted | No MELD audio in the repository or the demo; the Kaggle copy is private |
 | Chatbot free-tier limits or changes | Record the model and date. Manual ChatGPT fallback |
@@ -770,3 +770,6 @@ emotion-analyzer/
 | 1.2 | 2026-10-20 | Window rule rewritten as three cases, set by timing small.en in both windows in Phase 3 (§6.1, §8.1, §9.3 S4, AC-02, §14, §16): (a) both windows meet AC-08, so S4 chooses by WER; (b) only the 10 s window meets AC-08, so the window is fixed at 10 s and S4 records the WER cost; (c) neither does, so `base.en` is adopted before Phase 4 | v1.1 settled the model size against the preliminary window, but S4 makes the final window choice after training is fixed. Had S4 picked 30 s, AC-08 could have failed with no cheap way back |
 | 1.2 | 2026-10-20 | Speech test clips generated once with Windows' built-in text-to-speech (`tools/make_fixtures.ps1`) and committed in `tests/fixtures/`, the only audio in git (§4.3, AC-11, AC-13, §13, §14, §15) | With VAD on every clip, a synthetic tone reads as silence, so the normal-clip and long-recording tests need real speech. Committed fixtures keep the tests independent of text-to-speech at run time |
 | 1.2 | 2026-10-20 | `tasks.md` only: the mains-power check moved from the Phase 3 WER task to the timing task | Only timing needs mains power |
+| 1.3 | 2026-10-20 | §8.4: the temperatures and the fusion weight are fitted on the deployed text model's dev probabilities in its CPU precision (then int8; superseded by fp32 in the row below), computed on the laptop from Kaggle's dev Whisper transcripts, and the sound head's Kaggle dev probabilities. §10.2: R7 and R8 temperature-scale each seed with its own dev-fitted T before fusing at the deployed weight; R9 runs the int8 text model on Kaggle's test transcripts | Phase 6 found that int8 dynamic quantisation flattens the text model's probabilities: on dev, mean top probability 0.39 against 0.55 in fp16, calibration error 13.6 against 3.8, and 85% label agreement. Temperatures fitted on the fp16 outputs (T_text 1.01) left the deployed branch uncalibrated and its confidence mostly under the 0.40 disagreement threshold; on the int8 outputs T_text is 0.66. "The deployed models' dev probabilities" now names the int8 ones explicitly |
+| 1.3 | 2026-10-20 | Record only: the Kaggle run was done as one Save & Run All commit. The user skipped the interactive S0 pass (§9.1); S0 ran inside the commit, said GO, and its `s0_check.txt` was reviewed afterwards in Phase 6 | The two-pass procedure stays the documented one; the run finished in 1.87 h with every stage done |
+| 1.3 | 2026-10-20 | §8.3: the text model is deployed in **fp32** on the CPU instead of int8 dynamic quantisation, and T_text and the fusion weight are refitted on its dev outputs (T_text 1.009, w_sound 0.75; §8.4). §4.1, §6.2 and §16 updated to match | Decided by the user after Phase 6 measured both on mains power. Int8 cost 1.3 points of dev weighted-F1 on the text branch (50.30 → 49.01), changed 15% of its labels, flattened its probabilities, and made each sentence's output depend on the other sentences in its batch (activation scales are per batch). fp32 matches Kaggle on 99.9% of dev labels and still meets AC-08 and AC-09: median 1.71 s (p90 1.76 s) per 5 s clip and 1.40 GB peak, against 1.57 s and 1.90 GB with int8 |
