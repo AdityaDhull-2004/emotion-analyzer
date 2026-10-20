@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.3 (approved for build; changes in §20) |
+| Version | 1.4 (approved for build; changes in §20) |
 | Date | 2026-10-20 |
 | Course | Applied Data Science and AI (UMC 301), project 4 |
 | Method | Spec-driven development. This file is the source of truth; every change goes through the change log (§20) |
@@ -294,6 +294,7 @@ Fetch them with `huggingface_hub.hf_hub_download(repo_id="ajyy/MELD_audio", repo
 
 - **Only MELD dev** (`archive/dev.tar.gz` plus `dev.csv`) is downloaded locally, into `data/meld/dev/`. It is used for smoke tests, the preliminary WER check, latency and CPU-parity checks.
 - All MELD training happens on Kaggle.
+- **MELD metadata:** `train.csv`, `dev.csv` and `test.csv` from the same mirror (utterance text, speaker names and labels; no audio) are kept in `data/meld/meta/`, because the fusion weight is chosen on dev clips by speaker (§8.4).
 
 ## 8. Models
 
@@ -371,8 +372,8 @@ LayerNorm(768) → Linear(768, 256) → GELU → Dropout(0.2)
 log p_fused = w · log p_sound + (1 − w) · log p_text   →   softmax-renormalise
 ```
 
-- **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise dev weighted-F1. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts. The text model's dev probabilities are its CPU outputs in the deployed precision (fp32, §8.3), computed on the laptop from Kaggle's dev Whisper transcripts, because the precision can change the outputs (int8 flattened them). The sound head's are its Kaggle dev probabilities; the parity check (§10.5) covers the features.
-- **Calibration first:** before fusing, each model's log-probabilities are temperature-scaled with T_sound and T_text, each fitted on dev by minimising negative log-likelihood. The weight search then runs on the calibrated dev probabilities.
+- **Weight search:** w ∈ {0.00, 0.05, …, 1.00}, chosen to maximise weighted-F1 on the **dev clips whose speaker is not one of the six main characters** (Chandler, Joey, Monica, Phoebe, Rachel and Ross; speaker names from MELD's CSVs, §7.4). Those six make up 86% of dev and appear thousands of times in train, so a weight fitted on all of dev suits six familiar voices; the other speakers (155 dev clips) are MELD's closest stand-in for new voices. Ties go to the smaller w. The search uses the deployed models' dev probabilities: sound from the audio, text from the dev Whisper transcripts. The text model's dev probabilities are its CPU outputs in the deployed precision (fp32, §8.3), computed on the laptop from Kaggle's dev Whisper transcripts, because the precision can change the outputs (int8 flattened them). The sound head's are its Kaggle dev probabilities; the parity check (§10.5) covers the features.
+- **Calibration first:** before fusing, each model's log-probabilities are temperature-scaled with T_sound and T_text, each fitted on all of dev by minimising negative log-likelihood. The weight search then runs on the calibrated dev probabilities.
 - **When:** at the start of Phase 6, right after the text-ensemble rule (§8.3) has fixed the deployed text model, because the parity check needs the fused output.
 - **Saved:** `models/fusion.json`, holding both temperatures and the weight.
 - **Disagreement rule:** see §5.3.
@@ -539,7 +540,7 @@ Every trained row reports the mean ± sd over its 3 seeds. The acceptance criter
 - Compare the CPU int8 pipeline with the Kaggle fp16 results on MELD dev.
 - The weighted-F1 difference must be at most 1.5 points, for sound, text and fused.
 
-**10.6 New voices.** On the user's own recordings, report per-clip predictions, accuracy and weighted-F1, with a caveat about the small sample.
+**10.6 New voices.** On the user's own recordings, report per-clip predictions, accuracy and weighted-F1, with a caveat about the small sample. If the system changed after the recordings were first scored, the report shows the result before and after, and says plainly that the change came after the first result was seen.
 
 **10.7 Chatbot comparison.**
 - **Clips:** the same own recordings, sent to a general multimodal chatbot.
@@ -714,6 +715,7 @@ emotion-analyzer/
 | Browser microphone needs HTTPS | Self-signed HTTPS on the local network, tunnel HTTPS, upload as fallback |
 | *Friends* audio is copyrighted | No MELD audio in the repository or the demo; the Kaggle copy is private |
 | Chatbot free-tier limits or changes | Record the model and date. Manual ChatGPT fallback |
+| The sound branch doesn't carry over to new recording conditions (phone microphone, acted speech, no TV mix): 29% accuracy on the user's recordings against 61% for text | The fusion weight is chosen on dev speakers outside the main cast (§8.4, v1.4). If the app still trails the text branch on new voices, retrain the sound head with recording-condition augmentation (a new Kaggle run) |
 
 ## 17. Decisions (settled in v1.1)
 
@@ -773,3 +775,4 @@ emotion-analyzer/
 | 1.3 | 2026-10-20 | §8.4: the temperatures and the fusion weight are fitted on the deployed text model's dev probabilities in its CPU precision (then int8; superseded by fp32 in the row below), computed on the laptop from Kaggle's dev Whisper transcripts, and the sound head's Kaggle dev probabilities. §10.2: R7 and R8 temperature-scale each seed with its own dev-fitted T before fusing at the deployed weight; R9 runs the int8 text model on Kaggle's test transcripts | Phase 6 found that int8 dynamic quantisation flattens the text model's probabilities: on dev, mean top probability 0.39 against 0.55 in fp16, calibration error 13.6 against 3.8, and 85% label agreement. Temperatures fitted on the fp16 outputs (T_text 1.01) left the deployed branch uncalibrated and its confidence mostly under the 0.40 disagreement threshold; on the int8 outputs T_text is 0.66. "The deployed models' dev probabilities" now names the int8 ones explicitly |
 | 1.3 | 2026-10-20 | Record only: the Kaggle run was done as one Save & Run All commit. The user skipped the interactive S0 pass (§9.1); S0 ran inside the commit, said GO, and its `s0_check.txt` was reviewed afterwards in Phase 6 | The two-pass procedure stays the documented one; the run finished in 1.87 h with every stage done |
 | 1.3 | 2026-10-20 | §8.3: the text model is deployed in **fp32** on the CPU instead of int8 dynamic quantisation, and T_text and the fusion weight are refitted on its dev outputs (T_text 1.009, w_sound 0.75; §8.4). §4.1, §6.2 and §16 updated to match | Decided by the user after Phase 6 measured both on mains power. Int8 cost 1.3 points of dev weighted-F1 on the text branch (50.30 → 49.01), changed 15% of its labels, flattened its probabilities, and made each sentence's output depend on the other sentences in its batch (activation scales are per batch). fp32 matches Kaggle on 99.9% of dev labels and still meets AC-08 and AC-09: median 1.71 s (p90 1.76 s) per 5 s clip and 1.40 GB peak, against 1.57 s and 1.90 GB with int8 |
+| 1.4 | 2026-10-20 | §8.4: the fusion weight is chosen on the dev clips from speakers outside the six main characters (155 clips) instead of all of dev; the temperatures stay fitted on all of dev. §7.4: MELD's train/dev/test CSVs (no audio) are kept in `data/meld/meta/` for the speaker names. §16: a risk row for new recording conditions. §10.6: the own-recordings report shows the result before and after, and says the refit came after the first result | Decided by the user **after seeing the result on their own recordings**: the app was right on 36% of them while the text branch alone got 61%, because w_sound 0.75 (fitted on all of dev) let a sound branch that doesn't carry over to phone recordings outvote the text. The 28 recordings were not used to choose the new weight and stay the check, but they prompted the change, so they are no longer a blind test. Checked on dev first: only 36 dev clips (14 speakers) come from speakers never seen in train, too few to fit on (best w 0.80, unstable from 0.30 to 0.80 under resampling); and the sound head doesn't do worse on those speakers, so speaker overlap isn't the cause. On the 155 non-main-cast dev clips text is as good as sound, and the best weight is 0.50 (stable from 0.50 to 0.70 under resampling) |

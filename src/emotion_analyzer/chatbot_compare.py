@@ -146,12 +146,21 @@ def scores(labels, preds):
     return {**s, "acc_ci": (lo, hi)}
 
 
-def markdown(raw, ours, date):
+def markdown(raw, ours, date, ours_before=None):
+    """`ours_before`: our per-clip results from before a change made after seeing them
+    (§10.6); they are scored on the same clips and named in the report."""
     df = raw.merge(ours[["file", "fused", "fused_conf", "total_ms"]], on="file", how="left")
     g, o = scores(df["label"], df["parsed"]), scores(df["label"], df["fused"].fillna(""))
     invalid = int((df["parsed"] == "").sum())
     agree = 100 * float((df["parsed"] == df["fused"]).mean())
     model = df["model"].iloc[0]
+    before_line = []
+    if ours_before is not None:
+        was = df[["file"]].merge(ours_before[["file", "fused"]], on="file", how="left")["fused"].fillna("")
+        b = scores(df["label"], was)
+        before_line = [f"- **Ours before the fusion refit** (spec v1.4, made after seeing the first own-recordings "
+                       f"result): accuracy {b['accuracy']:.1f}, weighted-F1 {b['weighted_f1']:.1f} on the same clips. "
+                       "The table shows the system after the refit."]
     versions = sorted(set(df["model_version"].astype(str))) if "model_version" in df else []
     served = "" if versions in ([], [model]) else f" (the API reported serving `{'`, `'.join(versions)}`)"
     lines = [
@@ -165,7 +174,8 @@ def markdown(raw, ours, date):
            "allows 20 requests a day per model), so both systems are scored on those clips only. Running "
            "`python -m emotion_analyzer.chatbot_compare` again after the quota resets finishes the rest."]
           if len(df) < len(ours) else []),
-        "- **Ours:** the deployed system on the laptop CPU (the fused answer), from `own_recordings.md`.", "",
+        "- **Ours:** the deployed system on the laptop CPU (the fused answer), from `own_recordings.md`.",
+        *before_line, "",
         "| System | Accuracy | 95% CI (accuracy) | Weighted-F1 | Macro-F1 | Median latency per clip | Offline | Audio stays on the laptop |",
         "|---|---:|---|---:|---:|---:|---|---|",
         f"| Emotion Analyzer (ours) | {o['accuracy']:.1f} | {o['acc_ci'][0]:.1f}–{o['acc_ci'][1]:.1f} | "
@@ -197,6 +207,7 @@ def main(argv=None):
     ap.add_argument("--models", nargs="+", default=list(MODELS))
     ap.add_argument("--reuse", action="store_true", help="re-score results/chatbot_raw.csv without calling the API")
     ap.add_argument("--restart", action="store_true", help="discard results/chatbot_raw.csv and start again")
+    ap.add_argument("--ours-before", default=None, help="our earlier per-clip results, before a change (§10.6)")
     args = ap.parse_args(argv)
 
     ours = pd.read_csv(args.ours, keep_default_na=False)
@@ -214,7 +225,8 @@ def main(argv=None):
                   "The answers so far are saved; run the same command after the quota resets to finish.")
             if not len(raw):
                 return 1
-    md, s = markdown(raw, ours, time.strftime("%Y-%m-%d"))
+    before = pd.read_csv(args.ours_before, keep_default_na=False) if args.ours_before else None
+    md, s = markdown(raw, ours, time.strftime("%Y-%m-%d"), before)
     (config.RESULTS_DIR / "chatbot.md").write_text(md, encoding="utf-8")
     print(f"Gemini {s['model']}: accuracy {s['gemini']['accuracy']:.1f}, weighted-F1 "
           f"{s['gemini']['weighted_f1']:.1f}; ours: accuracy {s['ours']['accuracy']:.1f}, weighted-F1 "

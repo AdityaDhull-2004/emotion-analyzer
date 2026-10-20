@@ -190,10 +190,13 @@ def align(sound, text):
     return s_ids[keep], s_lab[keep], s_p[keep], t_p[tk]
 
 
-def fit(p_sound, p_text, labels):
-    """F1, F9: temperatures by NLL on dev, then the weight by dev weighted-F1."""
+def fit(p_sound, p_text, labels, weight_mask=None):
+    """F1, F9: temperatures by NLL on all of dev, then the weight by weighted-F1 on the dev
+    clips in `weight_mask` (all of them by default; §8.4 uses the speakers outside the
+    main cast)."""
     t_sound, t_text = fit_temperature(p_sound, labels), fit_temperature(p_text, labels)
-    w, table = search_weight(p_sound, p_text, labels, t_sound, t_text)
+    m = slice(None) if weight_mask is None else np.asarray(weight_mask, dtype=bool)
+    w, table = search_weight(p_sound[m], p_text[m], np.asarray(labels)[m], t_sound, t_text)
     return {"t_sound": t_sound, "t_text": t_text, "w_sound": w, "grid": table}
 
 

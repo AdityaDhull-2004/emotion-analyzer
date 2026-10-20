@@ -34,12 +34,12 @@ Weighted-F1 52.6, macro-F1 35.0, accuracy 54.5. Confusion matrix: `confusion_tex
 
 | Class | Precision | Recall | F1 | Support |
 |---|---:|---:|---:|---:|
-| anger | 48.0 | 37.7 | 42.2 | 345 |
-| disgust | 21.4 | 8.8 | 12.5 | 68 |
-| fear | 29.4 | 10.0 | 14.9 | 50 |
-| joy | 50.0 | 40.0 | 44.5 | 402 |
-| neutral | 64.2 | 79.1 | 70.9 | 1256 |
-| sadness | 43.0 | 19.2 | 26.6 | 208 |
-| surprise | 45.2 | 53.0 | 48.8 | 281 |
+| anger | 46.1 | 36.2 | 40.6 | 345 |
+| disgust | 36.4 | 5.9 | 10.1 | 68 |
+| fear | 26.1 | 12.0 | 16.4 | 50 |
+| joy | 55.7 | 39.8 | 46.4 | 402 |
+| neutral | 64.1 | 80.5 | 71.4 | 1256 |
+| sadness | 46.4 | 31.2 | 37.4 | 208 |
+| surprise | 47.0 | 50.5 | 48.7 | 281 |
 
-Weighted-F1 54.5, macro-F1 37.2, accuracy 56.9. Confusion matrix: `confusion_fused.png`.
+Weighted-F1 55.7, macro-F1 38.7, accuracy 58.0. Confusion matrix: `confusion_fused.png`.

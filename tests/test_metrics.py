@@ -252,6 +252,18 @@ def test_results_rows_and_report_parts(tmp_path, monkeypatch):
     assert all(g["ci_low"] <= g["gain"] <= g["ci_high"] for g in gains.values())
     md = evaluate.results_table_markdown(rows, params, gains)
     assert len(re.findall(r"\n\| R\d \|", md)) == 10 and "R7 − R5" in md
+    ref_md = evaluate.results_table_markdown(rows, {**params, "all_dev_weight_reference": 0.75}, gains, {"R7": by["R7"]})
+    assert "For reference, at the weight that all of dev gives (w_sound 0.75" in ref_md
+
+    import pandas as pd
+    dev_ids = [f"dev_dia{i}_utt0" for i in range(150)]
+    speakers = pd.Series(["Ross" if i % 3 else "Guest" for i in range(150)], index=dev_ids)
+    t_dev = fusion.load_predictions(evaluate.kaggle_pred("text", "main", 0, "dev", "whisper", pred))
+    fit = evaluate.fit_deployed(t_dev, pred_dir=pred, speakers=speakers)
+    assert fit["n_weight"] == 50 and fit["n_dev"] == 150 and fit["w_sound"] in config.FUSION_WEIGHT_GRID
+    assert {"weight_clips_weighted_f1", "all_dev_weight_reference", "fp16_text_reference"} <= set(fit)
+    with pytest.raises(ValueError):
+        evaluate.weight_mask(dev_ids, speakers.iloc[:10])
 
     parts = evaluate.deployed_test_parts(params, t_int8, pred_dir=pred)
     assert evaluate.per_class_report(parts, tmp_path).count("| anger |") == 3
@@ -280,6 +292,11 @@ def test_own_recordings_report():
     md, sc = evaluate.own_markdown(df, {"asr": "a", "window_s": 30, "sound": "s", "text": "t", "fusion_w_sound": 0.6})
     assert sc["sound"]["accuracy"] == 100.0 and sc["fused"]["accuracy"] == pytest.approx(600 / 7, abs=0.1)
     assert "no speech" in md and "small sample" in md and "transcript" not in md.split("| File")[1]
+    before = df.assign(fused=["neutral"] * 7, fused_conf=0.4)
+    md2, _ = evaluate.own_markdown(df, {"asr": "a", "window_s": 30, "sound": "s", "text": "t", "fusion_w_sound": 0.5},
+                                   before, "w_sound 0.75")
+    assert "## Before and after the fusion refit" in md2 and "after seeing" in md2 and "Fused before" in md2
+    assert "| Fused (the app's answer) | 14.3 | 85.7 |" in md2
 
 
 def test_chatbot_answer_parsing_and_report():
@@ -346,3 +363,5 @@ def test_chatbot_run_saves_each_answer_and_resumes(tmp_path):
     part, _ = cc.markdown(raw.head(2), ours, "2026-10-20")
     assert "Partial" not in full and "2 of the 3 recordings" in part
     assert "reported serving `gemini-x-001`" in full
+    later, _ = cc.markdown(raw, ours, "2026-10-20", ours.assign(fused="neutral"))
+    assert "Ours before the fusion refit" in later and "accuracy 0.0" in later

@@ -204,6 +204,12 @@ Then the build carries straight on to the next phase.
 - [ ] Send the last clip (surprise_04) to the same model after the daily quota resets (12:30 IST on 2026-10-21), regenerate `results/chatbot.md` as complete, and commit *(added: the user's choice)*
 - [x] `evaluate.py` → `results/error_analysis.md`: 10 MELD test clips where sound and text disagree (transcripts quoted as text), and the confusions per class *(352 disagreements; written discussion added)*
 - [x] Results, figures and a verdict on every AC → `insights.md`
+- [x] *(Spec v1.4: the user's choice, made after seeing the 36% on the own recordings)* Fusion weight for new speakers (§8.4):
+  - MELD's metadata CSVs (no audio) in `data/meld/meta/`, and a speaker loader;
+  - T_sound and T_text still fitted on all of dev; w chosen on the 155 dev clips from speakers outside the six main characters → `models/fusion.json`;
+  - re-run the parity comparison, the report, latency, the own-recordings evaluation and the chatbot report (no API calls);
+  - `own_recordings.md` shows the result before and after, and says the refit came after the 36% result (§10.6);
+  - update the error-analysis discussion, the app's About panel and `insights.md` *(w_sound 0.50; R9 55.7; own recordings fused 35.7% → 57.1%)*
 - **Done when:** AC-02 to AC-10 and AC-16 are checked and reported:
   - AC-02: WER reported for dev and test in both windows, and the window set by the §8.1 rule (chosen by WER in case (a); fixed at 10 s with its WER cost in case (b))
   - AC-03: sound only (R1), MELD test weighted-F1 ≥ 40.0 (seed mean)
@@ -219,16 +225,16 @@ Then the build carries straight on to the next phase.
 
 ## P8 App
 
-- [ ] Copy the clips listed in `data/own/demo_ok.txt` into `app/static/samples/`. If the file is missing, stop and remind.
-- [ ] `app/main.py`: FastAPI, with the models loaded once at start-up, `GET /`, `GET /api/health`, `POST /api/analyze`, and errors 400 / 413 / 422 in the §5.3 shape
-- [ ] `app/static/index.html`, `app.js` and `style.css`, with:
+- [x] Copy the clips listed in `data/own/demo_ok.txt` into `app/static/samples/`. If the file is missing, stop and remind. *(7 clips and index.json)*
+- [x] `app/main.py`: FastAPI, with the models loaded once at start-up, `GET /`, `GET /api/health`, `POST /api/analyze`, and errors 400 / 413 / 422 in the §5.3 shape
+- [x] `app/static/index.html`, `app.js` and `style.css`, with:
   - record and upload;
   - the fused result card, and the "How it sounds" and "What was said" cards;
   - transcript, disagreement banner, and the timeline for recordings over 10 s;
   - processing time, demo samples, and the About panel (citations and limitations);
   - a phone-width layout and no CDNs
-- [ ] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Speech comes from the committed `tests/fixtures/` clips; silence, too short, too large and unsupported inputs are built in the test; no MELD audio, and no text-to-speech at run time.
-- [ ] Start the app locally and give the user the link
+- [x] `tests/test_api.py`: normal clip, silence, long recording (segmented), unsupported format, too large, too short. Speech comes from the committed `tests/fixtures/` clips; silence, too short, too large and unsupported inputs are built in the test; no MELD audio, and no text-to-speech at run time. *(8 tests, including one slow test on the real models; all pass)*
+- [x] Start the app locally and give the user the link *(http://localhost:8443, HTTP until P9 adds the certificate)*
 - [ ] **USER** Try the app locally (record and upload) and give feedback
 - **Done when:** AC-11 passes and the user has tried the app. AC-11: the API tests pass for a normal clip, silence, a long recording, an unsupported format, a file that is too large and one that is too short.
 

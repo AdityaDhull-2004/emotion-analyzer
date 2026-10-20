@@ -125,3 +125,17 @@ def test_prediction_files_align_and_fit(tmp_path):
     assert params["w_sound"] in config.FUSION_WEIGHT_GRID and params["t_text"] > 0
     with pytest.raises(ValueError):
         fusion.align((ids, labels, sound), (ids, (labels + 1) % 7, text))
+
+
+def test_fit_chooses_the_weight_on_the_masked_clips_only():
+    """§8.4 v1.4: temperatures on all of dev, the weight on a subset of its clips."""
+    labels = np.array([0, 1, 2, 3] * 20)
+    right = np.stack([_probs(l, 0.6) for l in labels])
+    wrong = np.stack([_probs((l + 1) % 7, 0.6) for l in labels])
+    subset = np.arange(len(labels)) >= 60          # here sound is wrong and text right
+    p_sound = np.where(subset[:, None], wrong, right)
+    p_text = np.where(subset[:, None], right, wrong)
+    full = fusion.fit(p_sound, p_text, labels)
+    masked = fusion.fit(p_sound, p_text, labels, weight_mask=subset)
+    assert masked["w_sound"] < full["w_sound"] and masked["w_sound"] == 0.0
+    assert masked["t_sound"] == full["t_sound"] and masked["t_text"] == full["t_text"]

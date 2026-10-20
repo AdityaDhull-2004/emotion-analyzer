@@ -229,6 +229,46 @@ def read_demo_ok(path=None, own_root=None):
     return names
 
 
+def copy_demo_samples(dest=None, demo_ok=None):
+    """Copy the clips listed in data/own/demo_ok.txt into the git-ignored app/static/samples/,
+    with an index.json of file names and labels for the UI (§5.4, F12). Only own
+    recordings can be listed, so MELD audio can never become a demo sample."""
+    import json
+    import shutil
+
+    demo_ok = Path(demo_ok or config.DEMO_OK_FILE)
+    dest = Path(dest or config.SAMPLES_DIR)
+    names = read_demo_ok(demo_ok)
+    dest.mkdir(parents=True, exist_ok=True)
+    for old in dest.iterdir():
+        if old.is_file():
+            old.unlink()
+    index = []
+    for name in names:
+        shutil.copy2(demo_ok.parent / name, dest / name)
+        index.append({"file": name, "label": OWN_FILE_RE.match(name).group(1).lower()})
+    (dest / "index.json").write_text(json.dumps(index, indent=2))
+    return index
+
+
+def download_meld_meta(dest=None):
+    """MELD's train, dev and test CSVs (utterance text, speakers, labels; no audio) from the
+    mirror into data/meld/meta/ (§7.4)."""
+    from huggingface_hub import hf_hub_download
+
+    dest = Path(dest or config.MELD_META_DIR)
+    return [Path(hf_hub_download(config.MELD_MIRROR, f"{split}.csv", repo_type="dataset", local_dir=dest))
+            for split in MELD_SPLITS]
+
+
+def meld_speakers(split, meta_dir=None):
+    """Speaker name per clip id for one MELD split (§8.4). The names are characters, so a
+    generic one such as "Woman" pools several actors."""
+    df = read_meld_csv(Path(meta_dir or config.MELD_META_DIR) / f"{split}.csv")
+    ids = [f"{split}_dia{d}_utt{u}" for d, u in zip(df["Dialogue_ID"], df["Utterance_ID"])]
+    return pd.Series(df["Speaker"].astype(str).str.strip().to_numpy(), index=ids, name="speaker")
+
+
 def class_table(df):
     """Counts per label in the fixed label order."""
     counts = df["label"].value_counts()

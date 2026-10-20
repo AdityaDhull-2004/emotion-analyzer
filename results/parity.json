@@ -16,9 +16,9 @@
       "pass": true
     },
     "fused": {
-      "kaggle": 55.66,
-      "cpu": 54.73,
-      "gap": -0.93,
+      "kaggle": 55.24,
+      "cpu": 54.77,
+      "gap": -0.46,
       "pass": true
     }
   },

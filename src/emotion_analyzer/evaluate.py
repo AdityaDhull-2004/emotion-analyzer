@@ -338,25 +338,46 @@ def _fused(sound, text, params):
     return ids, y, fusion.fuse(ps, pt, params["w_sound"], params["t_sound"], params["t_text"])
 
 
-def fit_deployed(text_dev, pred_dir=None, precision=None):
-    """§8.4 at the start of Phase 6: T_sound, T_text and the weight on the deployed models'
-    dev probabilities. The sound head's are its Kaggle dev probabilities (CPU parity checks
-    the features); the text model's are its CPU outputs in the deployed precision on
-    Kaggle's dev Whisper transcripts, since int8 changes the outputs (flatter
-    probabilities). The same fit on the fp16 text probabilities is kept for reference."""
+WEIGHT_FIT = "the dev clips from speakers outside the six main characters"
+
+
+def weight_mask(ids, speakers=None):
+    """True for the dev clips whose speaker isn't in the main cast (§8.4, v1.4)."""
+    from . import data
+
+    spk = (data.meld_speakers("dev") if speakers is None else speakers).reindex(ids)
+    if spk.isna().any():
+        raise ValueError(f"no speaker for {int(spk.isna().sum())} dev clips; run data.download_meld_meta()")
+    return ~spk.isin(config.MAIN_CAST).to_numpy()
+
+
+def fit_deployed(text_dev, pred_dir=None, precision=None, speakers=None):
+    """§8.4: T_sound and T_text on the deployed models' dev probabilities, and the weight on
+    the dev clips of speakers outside the main cast (v1.4). The sound head's probabilities
+    are its Kaggle dev ones (CPU parity checks the features); the text model's are its CPU
+    outputs in the deployed precision on Kaggle's dev Whisper transcripts, since int8
+    changes the outputs. For reference it also records the weight that all of dev would
+    give (the v1.3 rule) and the same fit on the fp16 text probabilities."""
     sound_f = kaggle_pred("sound", "main", deployed_sound_seed(), "dev", None, pred_dir)
     ids, y, ps, pt = fusion.align(fusion.load_predictions(sound_f), text_dev)
-    p = fusion.fit(ps, pt, y)
+    m = weight_mask(ids, speakers)
+    p = fusion.fit(ps, pt, y, weight_mask=m)
     fused = fusion.fuse(ps, pt, p["w_sound"], p["t_sound"], p["t_text"])
-    dev = {name: round(metrics.weighted_f1(y, q.argmax(1)), 2)
-           for name, q in (("sound", ps), ("text", pt), ("fused", fused))}
+
+    def scores(mask):
+        return {name: round(metrics.weighted_f1(y[mask], q[mask].argmax(1)), 2)
+                for name, q in (("sound", ps), ("text", pt), ("fused", fused))}
+
     fp16 = [kaggle_pred("text", "main", s, "dev", "whisper", pred_dir) for s in config.TEXT_SEEDS_DEPLOYED]
-    _, y16, ps16, pt16 = fusion.align(fusion.load_predictions(sound_f), fusion.load_predictions(*fp16))
-    ref = fusion.fit(ps16, pt16, y16)
+    ids16, y16, ps16, pt16 = fusion.align(fusion.load_predictions(sound_f), fusion.load_predictions(*fp16))
+    ref = fusion.fit(ps16, pt16, y16, weight_mask=weight_mask(ids16, speakers))
     return {"t_sound": p["t_sound"], "t_text": p["t_text"], "w_sound": p["w_sound"],
+            "weight_fit": WEIGHT_FIT, "n_weight": int(m.sum()),
             "sound_dev": sound_f.name, "text_dev": f"{precision or config.TEXT_PRECISION} text seed(s) {list(config.TEXT_SEEDS_DEPLOYED)} "
-            "on Kaggle's dev Whisper transcripts", "n_dev": int(len(ids)), "dev_weighted_f1": dev,
-            "grid": p["grid"], "fp16_text_reference": {k: ref[k] for k in ("t_sound", "t_text", "w_sound")}}
+            "on Kaggle's dev Whisper transcripts", "n_dev": int(len(ids)),
+            "dev_weighted_f1": scores(np.ones(len(y), dtype=bool)), "weight_clips_weighted_f1": scores(m),
+            "grid": p["grid"], "all_dev_weight_reference": fusion.fit(ps, pt, y)["w_sound"],
+            "fp16_text_reference": {k: ref[k] for k in ("t_sound", "t_text", "w_sound")}}
 
 
 def row_probs(row, split, params, text_cpu=None, pred_dir=None, seeds=config.SEEDS):
@@ -448,13 +469,13 @@ def fusion_gains(params, pred_dir=None, seeds=config.SEEDS):
     return out
 
 
-def results_table_markdown(rows, params, gains=None):
+def results_table_markdown(rows, params, gains=None, reference=None):
     lines = ["# MELD test results (§10.2)", "",
              f"MELD test, {rows[0]['n']} utterances. Weighted-F1 is the headline (points). Trained rows "
              "show the mean ± sd over seeds 0, 1 and 2; the 95% interval is a bootstrap of the seed "
              f"mean over test utterances ({config.BOOTSTRAP_RESAMPLES} resamples, seed "
              f"{config.BOOTSTRAP_SEED}). Fused rows use the deployed weight (w_sound "
-             f"{params['w_sound']}, fitted on dev).", "",
+             f"{params['w_sound']}, chosen on {params.get('weight_fit', 'dev')}, §8.4).", "",
              "| Row | Condition | Seeds | Weighted-F1 | 95% CI | Macro-F1 | Accuracy | Dev weighted-F1 |",
              "|---|---|---:|---:|---|---:|---:|---:|"]
 
@@ -478,6 +499,12 @@ def results_table_markdown(rows, params, gains=None):
               "the laptop (§7.4), so the remaining CPU difference (int8 Whisper features and transcripts) "
               "is measured on dev by the parity check (`parity.md`); R9's dev value is that check's "
               "end-to-end CPU result."]
+    if reference:
+        lines.append(f"- For reference, at the weight that all of dev gives (w_sound "
+                     f"{params['all_dev_weight_reference']}, the v1.3 rule): "
+                     + ", ".join(f"{k} {r['weighted_f1_mean']:.1f}" for k, r in reference.items())
+                     + ". The v1.4 rule was adopted after the own-recordings result (§20); MELD test wasn't "
+                     "used to choose the weight.")
     if gains:
         lines.append("- Fusion gain on test, as a difference of seed means with a paired bootstrap 95% "
                      "interval (both rows scored on the same resampled utterances): "
@@ -701,7 +728,10 @@ def own_scores(df, col):
             "n": int(len(y))}
 
 
-def own_markdown(df, models):
+def own_markdown(df, models, before=None, before_label=None):
+    """results/own_recordings.md. `before` is an earlier own_eval table of the same clips
+    from a system that was changed after it was seen; both results are then shown, and
+    the report says so (§10.6)."""
     sc = {k: own_scores(df, k) for k in ("sound", "text", "fused")}
     lines = ["# Own recordings: new voices (§10.6, AC-10)", "",
              f"The deployed system ({models['asr']}, {models['window_s']} s window; {models['sound']}; "
@@ -714,12 +744,30 @@ def own_markdown(df, models):
         lines.append(f"| {name} | {s['accuracy']:.1f} | {s['acc_ci'][0]:.1f}–{s['acc_ci'][1]:.1f} | "
                      f"{s['weighted_f1']:.1f} | {s['macro_f1']:.1f} |")
     lines += ["", f"Chance is {100 / config.NUM_LABELS:.1f}% accuracy with 7 balanced classes. Median processing "
-              f"time {df['total_ms'].median():.0f} ms per clip (mean duration {df['duration_s'].mean():.1f} s).", "",
-              "| File | True | Sound | Text | Fused | Disagreement |", "|---|---|---|---|---|---|"]
-    for r in df.itertuples():
+              f"time {df['total_ms'].median():.0f} ms per clip (mean duration {df['duration_s'].mean():.1f} s)."]
+    if before is not None:
+        before = before.set_index("file").loc[df["file"]].reset_index()
+        bs = {k: own_scores(before, k) for k in ("sound", "text", "fused")}
+        lines += ["", "## Before and after the fusion refit", "",
+                  "**The fusion weight was changed after these recordings were first scored, and because of that "
+                  f"result.** The first run ({before_label}) had the app right on {bs['fused']['accuracy']:.1f}% of "
+                  f"the clips while the text branch alone got {bs['text']['accuracy']:.1f}%. The weight was then "
+                  "chosen again (spec v1.4, §8.4) on MELD dev, using only the clips from speakers outside the six "
+                  "main characters. These recordings weren't used to choose it, but the change came after seeing "
+                  "them, so they are no longer a blind test.", "",
+                  "| Output | Accuracy before | Accuracy after | Weighted-F1 before | Weighted-F1 after |",
+                  "|---|---:|---:|---:|---:|"]
+        for k, name in (("sound", "Sound"), ("text", "Text"), ("fused", "Fused (the app's answer)")):
+            lines.append(f"| {name} | {bs[k]['accuracy']:.1f} | {sc[k]['accuracy']:.1f} | "
+                         f"{bs[k]['weighted_f1']:.1f} | {sc[k]['weighted_f1']:.1f} |")
+        lines += ["", "The sound and text branches don't change; only the weight that combines them does."]
+    lines += ["", "| File | True | Sound | Text | Fused |" + (" Fused before |" if before is not None else "")
+              + " Disagreement |", "|---|---|---|---|---|" + ("---|" if before is not None else "") + "---|"]
+    for i, r in enumerate(df.itertuples()):
         mark = lambda lab, conf: (f"**{lab}**" if lab == r.label else lab) + f" {conf:.2f}" if lab else "no speech"
+        was = "" if before is None else f" {mark(before['fused'].iloc[i], before['fused_conf'].iloc[i])} |"
         lines.append(f"| {r.file} | {r.label} | {mark(r.sound, r.sound_conf)} | {mark(r.text, r.text_conf)} | "
-                     f"{mark(r.fused, r.fused_conf)} | {'yes' if r.disagreement else ''} |")
+                     f"{mark(r.fused, r.fused_conf)} |{was} {'yes' if r.disagreement else ''} |")
     heard = df[df["fused"].isin(config.LABELS)]
     cm = metrics.confusion(heard["label"].map(config.LABEL_TO_ID), heard["fused"].map(config.LABEL_TO_ID))
     counts = df["label"].value_counts()
@@ -746,7 +794,10 @@ def main(argv=None):
     pp.add_argument("--out", default=str(PARITY_DIR / "cpu_dev.csv"))
     sub.add_parser("fit", help="§8.4 temperatures and weight on the deployed models' dev outputs")
     sub.add_parser("report", help="§10.2-§10.8 tables and figures from the saved predictions")
-    sub.add_parser("own", help="§10.6 the deployed system on the own recordings")
+    po = sub.add_parser("own", help="§10.6 the deployed system on the own recordings")
+    po.add_argument("--before", default=None,
+                    help="an earlier own_eval CSV of the same clips, shown next to the new result (§10.6)")
+    po.add_argument("--before-label", default="the earlier system", help="what the earlier run was")
     args = ap.parse_args(argv)
 
     if args.cmd == "ensemble":
@@ -769,7 +820,12 @@ def main(argv=None):
         rows = results_rows(params, t_cpu, parity_json=out / "parity.json")
         pd.DataFrame(rows).to_csv(out / "results_table.csv", index=False)
         gains = fusion_gains(params)
-        (out / "results_table.md").write_text(results_table_markdown(rows, params, gains), encoding="utf-8")
+        reference = None
+        if params.get("all_dev_weight_reference", params["w_sound"]) != params["w_sound"]:
+            old = {**params, "w_sound": params["all_dev_weight_reference"]}
+            reference = {r["row"]: r for r in results_rows(old, t_cpu) if r["row"] in ("R7", "R8", "R9")}
+        (out / "results_table.md").write_text(results_table_markdown(rows, params, gains, reference),
+                                              encoding="utf-8")
         parts = deployed_test_parts(params, t_cpu)
         (out / "per_class.md").write_text(per_class_report(parts, out), encoding="utf-8")
         decision = json.loads((config.MODELS_DIR / "decision.json").read_text())
@@ -790,7 +846,8 @@ def main(argv=None):
             print(f"skipped (name doesn't match emotion_nn.ext): {skipped}")
         analyzer = fusion.load_analyzer()
         df = own_recordings_eval(analyzer, manifest, log=lambda m: print(m, flush=True))
-        md, sc = own_markdown(df, analyzer.models_info())
+        before = pd.read_csv(args.before, keep_default_na=False) if args.before else None
+        md, sc = own_markdown(df, analyzer.models_info(), before, args.before_label)
         (out / "own_recordings.md").write_text(md, encoding="utf-8")
         print(json.dumps(sc, indent=2))
         return

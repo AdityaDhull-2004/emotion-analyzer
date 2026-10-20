@@ -19,6 +19,8 @@ NUM_LABELS = len(LABELS)
 ROOT = Path(os.environ.get("EA_ROOT", Path(__file__).resolve().parents[2]))
 DATA_DIR = ROOT / "data"
 MELD_DIR = DATA_DIR / "meld"
+MELD_META_DIR = MELD_DIR / "meta"  # MELD's train/dev/test CSVs, no audio (§7.4)
+MELD_MIRROR = "ajyy/MELD_audio"
 OWN_DIR = DATA_DIR / "own"
 KAGGLE_OUT_DIR = DATA_DIR / "kaggle"
 MODELS_DIR = ROOT / "models"
@@ -69,6 +71,9 @@ DISAGREEMENT_MIN_CONF = 0.40
 OVERALL_RULE = "duration_weighted"
 FUSION_WEIGHT_GRID = [round(0.05 * i, 2) for i in range(21)]
 ENSEMBLE_MIN_GAIN = 1.0  # text-only weighted-F1 points on dev Whisper transcripts (§8.3)
+# The fusion weight is chosen on the dev clips of speakers outside the main cast, MELD's
+# closest stand-in for new voices; the temperatures use all of dev (§8.4, v1.4).
+MAIN_CAST = ("Chandler", "Joey", "Monica", "Phoebe", "Rachel", "Ross")
 
 # Deployed models (§8.2-§8.4), copied into models/ from the Kaggle outputs in Phase 6.
 SOUND_HEAD_PATH = MODELS_DIR / "sound_head.pt"

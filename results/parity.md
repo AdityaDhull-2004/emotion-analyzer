@@ -6,7 +6,7 @@ Kaggle: faster-whisper small.en float16 on a T4 and the text model in fp16 on th
 |---|---:|---:|---:|---|
 | sound | 53.13 | 53.76 | +0.63 | yes |
 | text | 50.30 | 50.51 | +0.21 | yes |
-| fused | 55.66 | 54.73 | -0.93 | yes |
+| fused | 55.24 | 54.77 | -0.46 | yes |
 
 Weighted-F1 in points; difference = laptop minus Kaggle.
 

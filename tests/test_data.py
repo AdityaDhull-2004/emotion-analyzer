@@ -128,8 +128,35 @@ def test_own_recordings_and_demo_list(tmp_path):
         data.read_demo_ok(demo)
 
 
+def test_copy_demo_samples(tmp_path):
+    """§5.4, F12: only the listed own recordings reach the samples folder, with an index."""
+    import json
+
+    own, samples = tmp_path / "own", tmp_path / "samples"
+    for name in ["anger_01.wav", "sadness_03.wav"]:
+        _touch_wav(own / name)
+    (own / "joy_02.m4a").write_bytes(b"m4a")
+    (own / "demo_ok.txt").write_text("anger_01.wav\njoy_02.m4a\n", encoding="utf-8")
+    samples.mkdir()
+    (samples / "stale.wav").write_bytes(b"old")
+    index = data.copy_demo_samples(samples, own / "demo_ok.txt")
+    assert index == [{"file": "anger_01.wav", "label": "anger"}, {"file": "joy_02.m4a", "label": "joy"}]
+    assert sorted(p.name for p in samples.iterdir()) == ["anger_01.wav", "index.json", "joy_02.m4a"]
+    assert json.loads((samples / "index.json").read_text()) == index
+
+
 def test_class_weights():
     labels = np.array([0] * 80 + [1] * 20)
     w = data.class_weights(labels, num_labels=2)
     assert w.mean() == pytest.approx(1.0)
     assert w[1] / w[0] == pytest.approx(2.0)
+
+
+def test_meld_speakers(tmp_path):
+    header = ("Sr No.,Utterance,Speaker,Emotion,Sentiment,Dialogue_ID,Utterance_ID,"
+              "Season,Episode,StartTime,EndTime\n")
+    (tmp_path / "dev.csv").write_text(
+        header + "1,Hi.,Joey ,joy,positive,0,0,1,1,0,1\n2,No.,The Hot Girl,anger,negative,3,1,1,1,0,1\n",
+        encoding="utf-8")
+    spk = data.meld_speakers("dev", tmp_path)
+    assert spk.to_dict() == {"dev_dia0_utt0": "Joey", "dev_dia3_utt1": "The Hot Girl"}

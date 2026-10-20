@@ -239,3 +239,43 @@ All on MELD test (2,610 utterances) unless stated. The deployed system has the s
   | AC-16 | Fused ECE before and after, with the diagram | 9.51 → 6.04 | pass (reported) |
 
   AC-11 to AC-15 and AC-17 belong to P8–P10.
+
+## P7 rework: fusion weight for new speakers (spec v1.4)
+
+- **Why:** on the user's 28 recordings the app was right 35.7% of the time, while the text branch alone got 60.7%, because w_sound 0.75 let the sound branch outvote the text. The user chose this refit **after seeing that result**. The recordings weren't used to choose the new weight, but they are no longer a blind test; `own_recordings.md` says so.
+- **Speaker check** (MELD's CSVs, no audio, in `data/meld/meta/`):
+  - Train has 260 speaker names. The six main characters are 86% of dev.
+  - Only 36 dev clips (3.3%, 14 speakers) and 109 test clips (4.2%, 31 speakers) come from speakers never seen in train.
+  - Seed-mean dev weighted-F1 of the sound head is 51.7 on the main six, 55.9 on other speakers and 62.2 on unseen ones. **The sound head doesn't get worse on new MELD speakers**, so speaker overlap isn't the cause of the drop on the own recordings. The likelier cause is the recording conditions (phone microphone, acted, no TV mix).
+- **Weight options checked on dev:**
+  - The 36 unseen-speaker clips give w 0.80, which varies from 0.30 to 0.80 under resampling, so they were rejected.
+  - The 155 clips from speakers outside the main cast give **w 0.50** (61.97 on those clips, against 59.2 at 0.75), stable from 0.50 to 0.70 under resampling. Text is as good as sound on them (55.1 against 53.8 for the deployed models).
+- **New `models/fusion.json`:** T_sound 0.814 and T_text 1.009 (still all of dev), **w_sound 0.50**. Dev fused weighted-F1 is 55.24, against 55.58 at 0.75.
+- **MELD test** (the weight was not chosen on test):
+
+  | Row | w_sound 0.75 (v1.3) | w_sound 0.50 (v1.4) |
+  |---|---:|---:|
+  | R7 fused, Whisper | 54.2 ± 0.2 | **55.5 ± 0.3** |
+  | R8 fused, real transcripts | 57.9 ± 0.9 | **62.3 ± 0.4** |
+  | R9 deployed system | 54.5 | **55.7** (95% CI 53.6–57.6) |
+  | Fusion gain R7 − R5 | +1.9 [+0.6, +3.3] | **+3.1 [+2.2, +4.1]** |
+  | Fused ECE before → after scaling | 9.51 → 6.04 | 7.91 → 5.40 |
+  | Fused sadness recall | 19.2% | 31.2% |
+
+  Weighting on all of dev suited the main six and cost the text-heavy classes. The more even weight is better on MELD test too.
+- **Parity (AC-07):** the fused gap is now −0.46 (Kaggle 55.24, laptop 54.77); sound and text are unchanged. Pass.
+- **Own recordings** (scored before and after the refit, timed on mains):
+
+  | Output | Before | After |
+  |---|---:|---:|
+  | Sound | 28.6% | 28.6% |
+  | Text | 60.7% | 60.7% |
+  | Fused | 35.7% (wF1 29.8) | **57.1% (wF1 58.0)** |
+
+  The app is still 3.6 points (one clip) below the text branch on new voices, and the sound branch itself still doesn't carry over. The next step, if wanted, is option 3: retrain the sound head with recording-condition augmentation, which needs a Kaggle run.
+- **Chatbot** (the same 27 clips): ours 37.0% before and **55.6%** after, against Gemini's 85.2%.
+- **Latency (mains):** median 1,648 ms, p90 1,710 ms, 1.40 GB peak, unchanged by the weight. The own-recordings pass runs at 1.68 s per clip.
+- **Acceptance criteria after v1.4:** all the same verdicts.
+  - AC-05 now passes more clearly (R7 55.5 against R5 52.3).
+  - AC-07 fused −0.46. AC-08 1.65 s. AC-16 7.91 → 5.40.
+  - AC-10 is still provisional until Gemini's last clip.
