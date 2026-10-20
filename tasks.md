@@ -94,7 +94,7 @@ Then the build carries straight on to the next phase.
 
 ## P3 Speech pipeline
 
-- [ ] `src/emotion_analyzer/speech.py`: `SpeechPipeline`, which provides:
+- [x] `src/emotion_analyzer/speech.py`: `SpeechPipeline`, which provides:
   - decoding to 16 kHz mono, with the 0.5–120 s limits;
   - VAD on every clip (no speech → `speech_detected: false`);
   - a clip of 10 s or less with speech kept as one segment; longer audio split into 1–10 s segments;
@@ -102,13 +102,13 @@ Then the build carries straight on to the next phase.
   - the transcript from the encoder output, with clips longer than the window transcribed in chunks and the text joined (F7);
   - valid frames;
   - per-stage timing
-- [ ] `src/emotion_analyzer/metrics.py`: WER with Whisper's English normaliser and `jiwer` (the rest of the module comes in P4)
-- [ ] `tools/make_fixtures.ps1` → `tests/fixtures/`: speech clips generated once with Windows' built-in text-to-speech (System.Speech), WAV 16 kHz mono, under 1 MB in total, committed. At least a short clip (about 4 s) and a long one (about 25 s, with pauses between sentences) for the segmentation and API tests
-- [ ] `tests/test_speech.py`, using the fixtures: decoding and limits, segmentation rules, frame counts (500 for the 10 s window), the no-speech case. Tests that need weights are marked `slow`.
-- [ ] WER on 300 local dev clips in both windows → `insights.md`
-- [ ] Check the laptop is on mains power (ask only if it's on battery), then time per-stage and end-to-end CPU latency on a 5 s clip in both windows → `insights.md`
-- [ ] Preliminary WER rule (§8.1: WER(10 s) − WER(30 s) ≤ 2.0 points) → `insights.md`
-- [ ] Window case settled by §8.1, recorded in `insights.md` and `config.py`:
+- [x] `src/emotion_analyzer/metrics.py`: WER with Whisper's English normaliser and `jiwer` (the rest of the module comes in P4)
+- [x] `tools/make_fixtures.ps1` → `tests/fixtures/`: speech clips generated once with Windows' built-in text-to-speech (System.Speech), WAV 16 kHz mono, under 1 MB in total, committed. At least a short clip (about 4 s) and a long one (about 25 s, with pauses between sentences) for the segmentation and API tests
+- [x] `tests/test_speech.py`, using the fixtures: decoding and limits, segmentation rules, frame counts (500 for the 10 s window), the no-speech case. Tests that need weights are marked `slow`.
+- [x] WER on 300 local dev clips in both windows → `insights.md`
+- [x] Check the laptop is on mains power (ask only if it's on battery), then time per-stage and end-to-end CPU latency on a 5 s clip in both windows → `insights.md`
+- [x] Preliminary WER rule (§8.1: WER(10 s) − WER(30 s) ≤ 2.0 points) → `insights.md`
+- [x] Window case settled by §8.1, recorded in `insights.md` and `config.py`:
   - (a) small.en meets AC-08 (median ≤ 2.0 s) in both windows: nothing changes, and S4 chooses the window by WER;
   - (b) it meets AC-08 only with the 10 s window: no stop; the window is fixed at 10 s for clips up to 10 s, and S4 records the WER cost instead of choosing;
   - (c) it fails AC-08 even with the 10 s window: switch to base.en, with `specs.md` updated (§20), and repeat the timing for base.en before P4

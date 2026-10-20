@@ -43,10 +43,13 @@ ASR_COMPUTE_TYPE = "int8"
 MEL_FRAMES_PER_S = 100
 ENCODER_FRAME_S = 0.02
 WINDOWS_S = (10, 30)
-# The window rule (§8.1) has three cases, settled in Phase 3 and recorded in
-# models/decision.json; WINDOW_S is the value used until that file exists.
-WINDOW_S = 10
-WINDOW_CASE = None
+# The window rule (§8.1). Phase 3 timed small.en end to end on mains power: median
+# 0.56 s (10 s window) and 1.71 s (30 s window), both within AC-08, so this is case
+# "a": S4 chooses the window by WER on MELD dev. The preliminary 300-clip WER gap
+# (10 s minus 30 s) was +2.87 points, so the preliminary choice is 30 s. S4's
+# decision in models/decision.json overrides WINDOW_S once it exists.
+WINDOW_CASE = "a"
+WINDOW_S = 30
 WER_RULE_MAX_GAP = 2.0
 LATENCY_TARGET_S = 2.0  # AC-08
 MEMORY_TARGET_GB = 2.5  # AC-09

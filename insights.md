@@ -19,3 +19,34 @@ MELD dev, downloaded locally from `ajyy/MELD_audio` (`archive/dev.tar.gz` and `d
 - Text repair: `ftfy` changed 308 of 1,109 utterances. The artefacts here are Windows-1252 bytes such as `\x92` for an apostrophe ("he\x92s" becomes "he's"). Labels are untouched.
 - Speakers: 47, led by the main cast (Ross 217, Phoebe 183, Rachel 164, Joey 149, Monica 137, Chandler 101).
 - Loaders for CREMA-D and RAVDESS (label maps, RAVDESS de-duplication by file name, speech only) and for the own recordings and `demo_ok.txt` are tested on synthetic files. The real corpora are only read on Kaggle (S2).
+
+## P3 Speech pipeline
+
+**Shared Whisper pass.** faster-whisper small.en int8 on the laptop CPU loads in 2.7 s, and the process uses about 0.45 GB. On the 4.97 s fixture, both windows give the same transcript ("I can't believe you did that. That was the best surprise ever.") and 249 valid frames (T × 768). A 10 s window gives encoder output of shape (1, 500, 768), as §6.1 states.
+
+**Segmentation (§5.2).** VAD runs on every clip. Pure silence gives no segments, so `speech_detected` is false. The 4.97 s fixture is one segment. The 24.1 s fixture splits into three segments: 0–7.9 s, 9.5–18.1 s and 19.6–22.5 s.
+
+**Chunking long clips (§8.1, §8.2).** Equal-length chunks cut a word on the long fixture ("because you are all here" was lost at an 8 s boundary). `chunk_audio` now moves each cut to the quietest 20 ms frame within 1.5 s of the equal split, and the full sentence comes back.
+
+**WER on 300 random MELD dev clips** (seed 0; Whisper normaliser and `jiwer`; corpus WER):
+
+| Window | WER | Substitutions | Deletions | Insertions | CPU s/clip |
+|---|---:|---:|---:|---:|---:|
+| 10 s | 26.52% | 198 | 175 | 331 | 0.40 |
+| 30 s | 23.65% | 193 | 168 | 267 | 1.56 |
+
+- The two windows give identical hypotheses on 63.7% of clips. The 10 s window's extra errors are mostly insertions and a few garbled short clips ("Good." became "the").
+- On the 6 sampled clips over 10 s, the chunked 10 s transcripts are better (7.7% against 11.2%). The 10 s window's deficit comes from short clips.
+- WER is below the expected 35%. This is a sample of 300; S3 measures the full splits.
+- **Preliminary WER rule:** WER(10 s) − WER(30 s) = +2.87 points, which is more than 2.0, so the rule points to the 30 s window. S4 decides on the full dev set.
+
+**End-to-end CPU latency** (on mains power, 5 s fixture, 2 warm-up and 20 timed runs). The text and sound stages use same-sized untrained models: int8 RoBERTa-base and a random attention-pooling head.
+
+| Window | decode + VAD | encode | transcribe | sound | text | fusion | **total, median / p90** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 10 s | 117 | 283 | 140 | 2 | 18 | 0 | **558 / 583 ms** |
+| 30 s | 123 | 1,309 | 272 | 2 | 20 | 0 | **1,711 / 1,930 ms** |
+
+Peak memory in that process was 1.86 GB, including loading RoBERTa in fp32 before quantising it.
+
+**Window case (§8.1): (a).** small.en meets AC-08 (median ≤ 2.0 s) in both windows. Nothing changes: the model stays small.en and S4 chooses the window by WER. The preliminary choice is 30 s, which would meet AC-08 with about 0.3 s to spare but miss the 1.2 s stretch target. Recorded in `config.py` (`WINDOW_CASE = "a"`).

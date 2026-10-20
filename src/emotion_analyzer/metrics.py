@@ -1,9 +1,87 @@
-"""Metrics (spec §6.2, §10.1): word error rate now; classification metrics follow in P4."""
+"""Metrics (spec §6.2, §10.1): weighted-F1, macro-F1, accuracy, per-class report,
+confusion matrix, bootstrap confidence intervals, seed mean ± sd, calibration error and
+word error rate. F1 and accuracy are reported in points (0–100)."""
 
 import json
 from functools import lru_cache
 
 import jiwer
+import numpy as np
+from sklearn.metrics import (accuracy_score, confusion_matrix as _confusion_matrix, f1_score,
+                             precision_recall_fscore_support)
+
+from . import config
+
+_ALL = list(range(config.NUM_LABELS))
+
+
+def weighted_f1(y_true, y_pred):
+    return 100.0 * f1_score(y_true, y_pred, labels=_ALL, average="weighted", zero_division=0)
+
+
+def macro_f1(y_true, y_pred):
+    return 100.0 * f1_score(y_true, y_pred, labels=_ALL, average="macro", zero_division=0)
+
+
+def accuracy(y_true, y_pred):
+    return 100.0 * accuracy_score(y_true, y_pred)
+
+
+def summary(y_true, y_pred):
+    return {"weighted_f1": weighted_f1(y_true, y_pred), "macro_f1": macro_f1(y_true, y_pred),
+            "accuracy": accuracy(y_true, y_pred), "n": int(len(y_true))}
+
+
+def per_class(y_true, y_pred):
+    """Precision, recall, F1 (points) and support per label, in the fixed order."""
+    p, r, f, s = precision_recall_fscore_support(y_true, y_pred, labels=_ALL, zero_division=0)
+    return {label: {"precision": 100 * p[i], "recall": 100 * r[i], "f1": 100 * f[i],
+                    "support": int(s[i])} for i, label in enumerate(config.LABELS)}
+
+
+def confusion(y_true, y_pred):
+    """Rows are true labels, columns predictions, in the fixed label order."""
+    return _confusion_matrix(y_true, y_pred, labels=_ALL)
+
+
+def bootstrap_ci(y_true, y_pred, metric=weighted_f1, n=config.BOOTSTRAP_RESAMPLES,
+                 seed=config.BOOTSTRAP_SEED, alpha=0.05):
+    """95% percentile bootstrap interval over utterances (§10.1)."""
+    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
+    rng = np.random.default_rng(seed)
+    stats = np.empty(n)
+    for i in range(n):
+        idx = rng.integers(0, len(y_true), len(y_true))
+        stats[i] = metric(y_true[idx], y_pred[idx])
+    return float(np.percentile(stats, 100 * alpha / 2)), float(np.percentile(stats, 100 * (1 - alpha / 2)))
+
+
+def mean_sd(values):
+    v = np.asarray(values, dtype=float)
+    return float(v.mean()), float(v.std(ddof=1)) if len(v) > 1 else 0.0
+
+
+def reliability(probs, y_true, bins=config.ECE_BINS):
+    """Per-bin confidence, accuracy and count for equal-width confidence bins."""
+    probs, y_true = np.asarray(probs), np.asarray(y_true)
+    conf = probs.max(1)
+    correct = (probs.argmax(1) == y_true).astype(float)
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    idx = np.clip(np.digitize(conf, edges[1:-1], right=True), 0, bins - 1)
+    out = []
+    for b in range(bins):
+        m = idx == b
+        out.append({"lo": float(edges[b]), "hi": float(edges[b + 1]), "count": int(m.sum()),
+                    "confidence": float(conf[m].mean()) if m.any() else None,
+                    "accuracy": float(correct[m].mean()) if m.any() else None})
+    return out
+
+
+def ece(probs, y_true, bins=config.ECE_BINS):
+    """Expected calibration error in points, 15 equal-width bins (§10.4b)."""
+    n = len(y_true)
+    return 100.0 * sum(b["count"] / n * abs(b["accuracy"] - b["confidence"])
+                       for b in reliability(probs, y_true, bins) if b["count"])
 
 
 @lru_cache(maxsize=1)

@@ -2,7 +2,7 @@
 RAVDESS loaders with label maps, and the user's own recordings.
 
 Every loader returns a pandas DataFrame manifest with at least the columns
-`path`, `label`, `label_id`, `speaker` and `source`. MELD adds `text`, `split`,
+`id`, `path`, `label`, `label_id`, `speaker` and `source`. MELD adds `text`, `split`,
 `dialogue_id`, `utterance_id` and `duration_s`.
 
 MELD layout, the same locally and on Kaggle: `{root}/{split}/{split}.csv` next to
@@ -121,6 +121,7 @@ def meld_manifest(split, root=None, check_counts=True, check_audio=True):
             f"{MELD_EXPECTED_PAIRS[split]} (§7.1). Check the download and extraction.")
 
     df = pd.DataFrame({
+        "id": [f"{split}_dia{d}_utt{u}" for d, u in joined["key"]],
         "path": [files[k] for k in joined["key"]],
         "label": joined["Emotion"].to_numpy(),
         "text": [clean_text(t) for t in joined["Utterance"]],
@@ -147,9 +148,9 @@ def cremad_manifest(root, check_audio=True):
         if emo not in CREMA_MAP:
             dropped.append({"path": str(p), "reason": f"unmapped emotion {emo}"})
             continue
-        rows.append({"path": p, "label": CREMA_MAP[emo], "speaker": f"cremad_{actor}",
+        rows.append({"id": p.stem, "path": p, "label": CREMA_MAP[emo], "speaker": f"cremad_{actor}",
                      "source": "cremad"})
-    df = _with_label_ids(pd.DataFrame(rows, columns=["path", "label", "speaker", "source"]))
+    df = _with_label_ids(pd.DataFrame(rows, columns=["id", "path", "label", "speaker", "source"]))
     if check_audio:
         df = _check_durations(df, dropped)
     return df, dropped
@@ -167,9 +168,9 @@ def ravdess_manifest(root, check_audio=True):
         if modality != "03" or channel != "01":  # audio-only speech
             continue
         seen.add(p.name)
-        rows.append({"path": p, "label": RAVDESS_MAP[emotion], "speaker": f"ravdess_{actor}",
+        rows.append({"id": p.stem, "path": p, "label": RAVDESS_MAP[emotion], "speaker": f"ravdess_{actor}",
                      "source": "ravdess"})
-    df = _with_label_ids(pd.DataFrame(rows, columns=["path", "label", "speaker", "source"]))
+    df = _with_label_ids(pd.DataFrame(rows, columns=["id", "path", "label", "speaker", "source"]))
     if check_audio:
         df = _check_durations(df, dropped)
     return df, dropped
@@ -205,9 +206,9 @@ def own_manifest(root=None):
             if not m or m.group(1).lower() not in config.LABEL_TO_ID:
                 skipped.append(p.name)
                 continue
-            rows.append({"path": p, "label": m.group(1).lower(), "speaker": "own",
+            rows.append({"id": p.stem, "path": p, "label": m.group(1).lower(), "speaker": "own",
                          "source": "own"})
-    df = _with_label_ids(pd.DataFrame(rows, columns=["path", "label", "speaker", "source"]))
+    df = _with_label_ids(pd.DataFrame(rows, columns=["id", "path", "label", "speaker", "source"]))
     return df, skipped
 
 
