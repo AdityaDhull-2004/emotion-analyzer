@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emotion Analyzer — Interview Prep</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--line:#e3e3e3;--acc:#0b5ed7;--code:#f6f8fa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:1.9rem;margin:0 0 .3em}
+.sub{color:var(--mut);margin:0 0 2em}
+.toc{border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin-bottom:2em}
+.toc ol{margin:0;padding-left:1.2em}
+.toc li{margin:.25em 0}
+.toc a{color:var(--acc);text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.btns{margin:0 0 1.5em;display:flex;gap:10px}
+button{font:inherit;padding:6px 14px;border:1px solid var(--line);background:#fafafa;color:var(--fg);border-radius:7px;cursor:pointer}
+button:hover{background:#f0f0f0}
+.turn{border-top:1px solid var(--line);padding-top:1.4em;margin-top:1.8em}
+h2.tn{font-size:1.15rem;margin:0 0 .6em}
+.me{background:#f0f6ff;border-left:3px solid var(--acc);padding:12px 16px;border-radius:0 8px 8px 0}
+.me p{margin:.4em 0}
+details{margin-top:.8em}
+summary{cursor:pointer;color:var(--mut);font-size:.9rem;padding:6px 0}
+.resp{border-left:2px solid var(--line);padding-left:16px;margin-top:.6em}
+.say p{margin:.5em 0}
+.say h2{font-size:1.1rem;margin:1.2em 0 .4em}
+.say h3{font-size:1rem;margin:1.1em 0 .3em}
+.say hr{border:none;border-top:1px dashed var(--line);margin:1.4em 0}
+.say blockquote{margin:.8em 0;padding:.2em 14px;border-left:3px solid var(--line);color:var(--fg)}
+.say a{color:var(--acc)}
+.tool{color:var(--mut);font-size:.85rem;font-family:ui-monospace,Consolas,monospace;margin:.35em 0}
+pre{background:var(--code);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:.84rem}
+code{font-family:ui-monospace,Consolas,monospace}
+:not(pre)>code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+table{border-collapse:collapse;margin:.6em 0;display:block;overflow-x:auto}
+td,th{border:1px solid var(--line);padding:4px 10px;text-align:left}
+@media(prefers-color-scheme:dark){
+:root{--bg:#16181c;--fg:#e6e6e6;--mut:#9aa0a6;--line:#2c3036;--acc:#6aa9ff;--code:#1d2026}
+.me{background:#1b2430}
+button{background:#22262c;color:#e6e6e6}
+button:hover{background:#2a2f36}}
+</style></head><body><div class="wrap">
+<h1>Audio Emotion Analyzer — Interview Prep</h1>
+<p class="sub">Mock interview with Claude: 9 turns, each answer rated against the project's measured numbers</p>
+<div class="btns"><button onclick="document.querySelectorAll('details').forEach(function(d){d.open=true})">Expand all</button><button onclick="document.querySelectorAll('details').forEach(function(d){d.open=false})">Collapse all</button></div>
+<nav class="toc"><ol><li><a href="#t1">Turn 1</a> — Interview prep request: the 8 questions</li><li><a href="#t2">Turn 2</a> — Q1: what happens to a 5-second clip (explained)</li><li><a href="#t3">Turn 3</a> — Q2: why freeze the Whisper encoder</li><li><a href="#t4">Turn 4</a> — Q3: is 52.3 vs 39–42 a fair comparison</li><li><a href="#t5">Turn 5</a> — Q4: the fusion-weight leakage challenge</li><li><a href="#t6">Turn 6</a> — Q5: weighted-F1, class weights and macro-F1</li><li><a href="#t7">Turn 7</a> — Q6: training curves and checkpoint selection (explained)</li><li><a href="#t8">Turn 8</a> — Q7: why use this instead of Gemini</li><li><a href="#t9">Turn 9</a> — Q8: the next step, and the overall scorecard</li></ol></nav>
+<section class="turn" id="t1"><h2 class="tn">Turn 1</h2><div class="me"><p>Look at the emotion analyzer project and ask 7-8 questions to practice for interview on this project.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="tool">▸ Bash: List project folders and read emotion memory</div><div class="tool">▸ Bash: List emotion analyzer folder and doc sizes</div><div class="tool">▸ Read: emotion-analyzer/REPORT.md</div><div class="tool">▸ Bash: List existing viva question headings</div><div class="say"><p>Here are 8 questions, ordered from warm-up to hard follow-ups:</p>
+<ol>
+<li>
+<p><strong>Walk-through.</strong> A user uploads a 5-second clip. Take me from upload to the final answer on screen. Where do the 1.65 seconds go?</p>
+</li>
+<li>
+<p><strong>Design choice.</strong> Why did you freeze Whisper's encoder and reuse it for the sound branch, instead of fine-tuning a dedicated speech-emotion model such as wav2vec2 or emotion2vec?</p>
+</li>
+<li>
+<p><strong>Fair comparison?</strong> Your sound-only model scores 52.3 wF1, while the MELD paper's audio models score 39–42. Is that a fair comparison? What two things might be inflating your number?</p>
+</li>
+<li>
+<p><strong>Leakage challenge.</strong> You changed the fusion weight from 0.75 to 0.50 after seeing results on your own recordings. Isn't that tuning on the test set? Defend the decision.</p>
+</li>
+<li>
+<p><strong>Metrics and imbalance.</strong> Why is weighted-F1 your headline metric and not accuracy? Why use square-root inverse-frequency class weights instead of plain inverse frequency? What does macro-F1 of 38.7 tell me that wF1 of 55.7 hides?</p>
+</li>
+<li>
+<p><strong>Training curves.</strong> The text model's best dev epoch was epoch 1, and the sound head's was epoch 4. What does that tell you? Why did you select the text model on Whisper transcripts and not on gold transcripts?</p>
+</li>
+<li>
+<p><strong>The ChatGPT question.</strong> Gemini got 85% on your clips and your system got 56%. Why would anyone use yours?</p>
+</li>
+<li>
+<p><strong>Next step.</strong> With two more weeks, what single change would improve the deployed system most? Which number in your results supports that choice?</p>
+</li>
+</ol>
+<p>Answer one at a time or all together, and I'll check each answer against REPORT.md and point out anything you missed.</p></div></div></details></section><section class="turn" id="t2"><h2 class="tn">Turn 2</h2><div class="me"><p>I do not know the first answer, explain it to me.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><h2>What happens to a 5-second clip</h2>
+<p><strong>Step 1. Decode the audio: about 121 ms, VAD included.</strong>
+- Whatever format the user uploads (M4A, MP3, WebM and so on) is converted to 16 kHz mono float32 with <code>faster_whisper.decode_audio</code>.
+- Silero VAD (voice activity detection) then checks for speech. A clip of 10 s or less stays as one segment. Longer clips are cut into 1–10 s pieces.</p>
+<p><strong>Step 2. Make the log-mel spectrogram (counted inside the encoder time).</strong>
+- The audio becomes a log-mel spectrogram at 100 frames per second. This is the image of the sound that Whisper reads.
+- It is padded to Whisper's <strong>30-second window</strong>, even though the clip is only 5 s.</p>
+<p><strong>Step 3. Run the Whisper encoder once: 1,225 ms, 74% of the total.</strong>
+- The frozen <code>small.en</code> encoder, run in int8 on the CPU, outputs one 768-number vector per 20 ms.
+- This single pass feeds <strong>both</strong> branches. That is the key design point: one encoder, two uses.
+- It is slow because it processes the full 30 s of padded input. A 10 s window would be faster, but it raised WER by 5.85 points, so 30 s was kept by a pre-set rule.</p>
+<p><strong>Step 4a. Sound branch: 2 ms.</strong>
+- Only the valid frames are kept: 5 s ÷ 0.02 s = 250 frames, so padding is dropped.
+- The small attention-pooling head (0.27 M parameters) learns which frames matter, such as a shout or a laugh, and outputs 7 probabilities: <strong>p_sound</strong>.</p>
+<p><strong>Step 4b. Text branch: 273 ms decoder + 33 ms RoBERTa.</strong>
+- Whisper's decoder turns the same encoder output into a transcript, using greedy decoding.
+- RoBERTa-base (fp32) reads the transcript and outputs 7 probabilities: <strong>p_text</strong>.</p>
+<p><strong>Step 5. Calibrate and fuse: about 0 ms.</strong>
+- Each branch is temperature-scaled so its confidences are honest: T_sound = 0.814, T_text = 1.009.
+- The two are combined in log space with w = 0.5, a weighted geometric mean, which gives the final 7 probabilities.
+- <strong>Disagreement flag:</strong> raised if the two branches pick different labels and both are at least 40% confident.
+- If the transcript is empty, the text branch becomes uniform and the sound branch decides.</p>
+<p><strong>Step 6. Show the result.</strong>
+- The page shows the label with all 7 probabilities, a "How it sounds" card, a "What was said" card with the transcript, and the flag if raised.
+- The audio is never stored.</p>
+<p><strong>Total: 1,649 ms median, 1.40 GB peak memory.</strong> This meets the 2.0 s target but misses the 1.2 s stretch goal.</p>
+<h2>How to say it in 30 seconds</h2>
+<blockquote>
+<p>"The audio is decoded to 16 kHz and turned into a log-mel spectrogram. One pass of a frozen Whisper encoder serves two branches. A small attention head reads the encoder frames for <em>how it sounds</em>. Whisper's decoder makes a transcript that RoBERTa reads for <em>what was said</em>. Both outputs are temperature-calibrated and fused in log space, and a flag goes up if they confidently disagree. It takes 1.65 s on a laptop CPU. Three quarters of that is the Whisper encoder, because it pads every clip to 30 seconds. The trained heads take only 35 ms together."</p>
+</blockquote>
+<p><strong>Likely follow-up:</strong> "How would you make it faster?" Two options. Use a shorter window for short clips, but only with a better ASR model, since the 10 s window cost 5.85 WER points. Or use distil-Whisper. Speeding up the heads would not help, because they take only 35 ms.</p>
+<p>Want to try answering Q2?</p></div></div></details></section><section class="turn" id="t3"><h2 class="tn">Turn 3</h2><div class="me"><p>The whisper&#x27;s encoder was frozen because one encoder pass gives both the sound features and the transcript, so a separate emotion2vec would add a second slow encoder on a CPU. Freezing it also means only a 0.27 M-parameter head is trained, which is safe on 10k clips, and Whisper&#x27;s encoder is the strongest frozen encoder on 23 of 32 emotion datasets.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="tool">▸ Grep: emotion2vec|wav2vec</div><div class="tool">▸ Read: emotion-analyzer/VIVA_QUESTIONS.md</div><div class="say"><p><strong>Mostly correct. I'd give it about 7/10.</strong> All three of your points are right. The answer is missing two things that make it complete.</p>
+<p><strong>What you got right</strong>
+- One encoder pass gives both the sound features and the transcript, so there is no second slow encoder on the CPU. This is the strongest point, so it was good to lead with it.
+- Only a 0.27 M-parameter head is trained, which is safe on 10k clips.
+- Whisper's encoder was the best frozen encoder on 23 of 32 emotion datasets. Name the source: the <strong>EmoBox benchmark</strong>.</p>
+<p><strong>What you missed</strong>
+1. <strong>The examiner named emotion2vec, so answer that directly.</strong> The <code>emotion2vec_plus</code> checkpoints were trained on data that includes MELD, and the spec bans any checkpoint already trained on MELD. It would have seen the test set's labels, so the score would be leaked. This is the sharpest reason, and it targets exactly what they asked.
+2. <strong>Training cost.</strong> Because the encoder is frozen, its features were computed once and cached as fp16 files on Kaggle. Each of the 9 sound runs then took only minutes on a T4, and the whole pipeline took 1.87 h within the free GPU budget.
+3. <strong>Contrast the size.</strong> Say what the other option would have meant. Fine-tuning the encoder means updating about 88 M parameters on 10k clips, which would overfit. That makes your "0.27 M is safe" point much stronger.</p>
+<p><strong>Add this if you have time: what freezing cost you.</strong> On your own phone recordings, the sound branch scored only 28.6%. A frozen encoder plus a small head did not adapt to phone-microphone conditions. The next step would be LoRA on the top encoder layers, plus recording-condition augmentation. Raising this yourself shows you know the trade-off before they push you on it.</p>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"Three reasons. First, deployment: one Whisper encoder pass gives both the sound features and the transcript, so there's no second encoder on the CPU. Second, data and compute: the features are cached once, and I train only a 0.27 M-parameter head instead of 88 M encoder parameters, which would overfit 10k clips. Third, quality: in the EmoBox benchmark, Whisper's encoder was the best frozen encoder on 23 of 32 datasets. On emotion2vec specifically: the emotion2vec+ checkpoints were trained on data that includes MELD, so using them would leak the test set. The cost is that the frozen head doesn't adapt to phone audio, and LoRA on the top layers is the next step."</p>
+</blockquote>
+<p>Ready for Q3?</p></div></div></details></section><section class="turn" id="t4"><h2 class="tn">Turn 4</h2><div class="me"><p>Not fully a fair comparison, because two things likely inflate our 52.3: Whisper&#x27;s encoder also encodes which words were said, not just tone, and the same six main characters appear in train and test. That&#x27;s why the sound branch falls to 28.6% on our own new-voice phone recordings.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><p><strong>Half right. About 6/10.</strong> You named both inflating factors correctly. The last sentence is the problem, because your own data contradicts it.</p>
+<p><strong>What you got right</strong>
+- Whisper's encoder also captures <em>which words</em> were said, so the sound branch is not purely about tone.
+- The same six main characters appear in train and test.</p>
+<p><strong>The mistake: don't blame the 28.6% on speaker overlap</strong>
+- REPORT.md §11.5 checked this on MELD dev. The sound branch scored <strong>62.2 wF1 on speakers never heard in training</strong>, against 51.7 on the main six. It did <em>not</em> get worse on new voices.
+- So the likely cause of the 28.6% is <strong>recording conditions</strong>: a phone microphone, acted delivery, and no TV audio mix. Speaker identity is the less likely cause.
+- An examiner who has read your report will catch that contradiction.
+- One honest caveat: the unseen-speaker group is only 36 clips, so 62.2 is a noisy number.</p>
+<p><strong>The point that makes the answer strong: one inflator applies to both sides</strong>
+- Speaker overlap comes from MELD's <strong>official splits</strong>. The MELD paper's models used the same splits, so they had the same advantage. Overlap makes <em>everyone's</em> MELD numbers look better than real-world performance, but it does not make your comparison unfair.
+- The inflator that is specific to your system is the <strong>word content in Whisper features</strong>. openSMILE features don't carry it.
+- <strong>One factor works against you:</strong> DialogueRNN (41.8) uses conversation context and your head does not. Even with that handicap you are about 10 points ahead.</p>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"It's the same test set, the same 7 classes and the same metric, so the comparison is meaningful, with one caveat. Whisper's encoder also captures which words were said, so my 'sound' branch isn't purely tone. That inflates it compared with openSMILE features. Speaker overlap inflates MELD scores in general, but the published models used the same official splits, so it affects both sides equally. Against me, DialogueRNN uses conversation context and my head doesn't. Separately, the sound branch drops to 28.6% on my own phone recordings. On MELD, unseen speakers scored 62.2, so that drop is more likely the recording conditions than the speaker."</p>
+</blockquote>
+<p>Ready for Q4? It's the hardest one: the fusion-weight leakage challenge.</p></div></div></details></section><section class="turn" id="t5"><h2 class="tn">Turn 5</h2><div class="me"><p>Partly yes, and we say so: those 28 clips are no longer a blind test.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><p><strong>Honest, but incomplete. About 3/10.</strong> You conceded the point and stopped there, but the question asks you to defend the decision. Admitting the clips are no longer blind is the right <em>ending</em>, not the whole answer.</p>
+<p><strong>What a full defence covers</strong></p>
+<ol>
+<li><strong>What the 28 clips actually did.</strong> They exposed a problem: fused 35.7% against text-only 60.7%. They were <em>not</em> used to fit the new weight.</li>
+<li><strong>What the weight was fitted on.</strong> The <strong>155 MELD dev clips from speakers outside the main six</strong>, MELD's closest stand-in for new voices. The old weight of 0.75 came from all of dev, which is 86% main cast, so it trusted the sound branch too much for unfamiliar voices.</li>
+<li><strong>The MELD test set was never touched.</strong> Test wF1 moving from 54.5 to 55.7 was a <em>consequence</em> of the refit, not the target.</li>
+<li><strong>The choice was made by rule.</strong> A grid of 0.00–1.00 in steps of 0.05, scored by wF1, with ties going to the smaller w.</li>
+<li><strong>Stability was checked.</strong> Under resampling the weight stayed between 0.50 and 0.70. The 36 never-heard speakers alone gave 0.80, but that swung from 0.30 to 0.80, so it was rejected as too noisy.</li>
+<li><strong>Strongest point: 0.50 is not the best weight for your own clips.</strong> Text-only scored <strong>60.7%</strong> on them, and the deployed w = 0.50 scored <strong>57.1%</strong>. If you had tuned on your clips, you would have chosen text-only. This is the clearest evidence the weight wasn't fitted to them.</li>
+<li><strong>One parameter can't overfit much.</strong> Fusion has one weight plus two temperatures.</li>
+<li><strong>Then the concession</strong>, which you already had: the 28 clips are labelled non-blind wherever they appear, and the fix is a fresh blind set from new speakers.</li>
+</ol>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"The own clips exposed a problem, but the new weight wasn't fitted on them. The old weight of 0.75 came from a dev set that's 86% main cast, so it over-trusted sound for new voices. I refit by a fixed grid rule on the 155 dev clips from speakers outside the main six. The weight was stable at 0.5 to 0.7 under resampling, and the MELD test set was never used. If I'd tuned on my own clips I'd have picked text-only, which scored 60.7% there versus 57.1% for the deployed weight. Still, those clips are no longer blind, and I say so everywhere they appear. The proper fix is a fresh blind recording set."</p>
+</blockquote>
+<p><strong>Pattern to watch:</strong> in Q3 and Q4 you went straight to the weakness. Admitting limits is good, but open with what you did right, back it with a number, and finish with the limitation.</p>
+<p>Ready for Q5 on metrics and class imbalance?</p></div></div></details></section><section class="turn" id="t6"><h2 class="tn">Turn 6</h2><div class="me"><p>Neutral is 48% of test, so always saying &quot;neutral&quot; gets 48.1% accuracy but only 31.3 wF1, and wF1 is MELD&#x27;s standard metric. Plain inverse frequency would weight disgust about 17× more than neutral and make training noisy, so the square root is used; macro-F1 of 38.7 counts every class equally, which exposes disgust (F1 10.1) and fear (16.4) that wF1 hides.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><p><strong>Strong. About 8.5/10, your best answer so far.</strong> Every number is correct, and you answered all three parts of the question. Here is what would take it higher.</p>
+<p><strong>Small additions</strong>
+1. <strong>Give the number for the square root.</strong> Square-root weighting brings the disgust-to-neutral ratio down from about 17× to about 4× (weights 1.65 vs 0.40). Then name the cost of the full 17×: it would wreck <strong>neutral precision</strong>. Neutral is the class that carries 48% of the wF1 weight, so hurting it hurts the headline number most.
+2. <strong>Say <em>why</em> wF1 hides the rare classes.</strong> wF1 weights each class by its test count. Disgust and fear together are under 5% of the test set, so even near-zero F1 on them barely moves wF1. Macro-F1 gives each class 1/7 of the weight.
+3. <strong>Explain why disgust and fear are low, before they ask.</strong>
+   - They have the fewest training clips (271 and 268).
+   - They sound close to anger.
+   - The text model predicted "disgust" only <strong>twice</strong> in 2,610 clips. Both were right, so it has 100% precision but 2.9% recall.
+   - More generally, neutral absorbs 31–48% of every emotion's clips.
+4. <strong>Why wF1 is the standard:</strong> the MELD paper, EmoBERTa and COSMIC all report it, so it is the only metric that lets you compare against them.</p>
+<p><strong>Likely follow-up: "Why not focal loss?"</strong>
+- It wasn't used. The recipe was fixed in the spec before training, with no hyperparameter search.
+- The gain would be uncertain against seed noise of about ±0.5 wF1.
+- The bigger limit on rare classes is too little data, not the loss function.</p>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"MELD is 48% neutral, so always answering neutral gets 48.1% accuracy but only 31.3 wF1. Accuracy flatters the majority class, and wF1 is what every MELD paper reports, so I can compare against them. For the loss I used square-root inverse-frequency weights. Full inverse frequency would weight disgust about 17 times more than neutral, which makes training noisy and destroys neutral precision. The square root brings that down to about 4 times. wF1 weights classes by their size, so disgust and fear, under 5% of the test set, barely move it. Macro-F1 of 38.7 counts every class equally and shows they are weak: F1 of 10 and 16. Both are rare, both sound like anger, and neutral absorbs a lot of everything."</p>
+</blockquote>
+<p>Ready for Q6, on the training curves?</p></div></div></details></section><section class="turn" id="t7"><h2 class="tn">Turn 7</h2><div class="me"><p>I am not too sure of this one either.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><h2>What the training curves show</h2>
+<p><strong>Sound head (deployed seed 1)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Epoch</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th><strong>4</strong></th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+<th>8</th>
+<th>9</th>
+<th>10</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Train loss</td>
+<td>1.74</td>
+<td>1.55</td>
+<td>1.45</td>
+<td><strong>1.37</strong></td>
+<td>1.26</td>
+<td>1.15</td>
+<td>1.04</td>
+<td>0.94</td>
+<td>0.86</td>
+<td>0.78</td>
+</tr>
+<tr>
+<td>Dev wF1</td>
+<td>48.6</td>
+<td>52.0</td>
+<td>52.9</td>
+<td><strong>53.1</strong></td>
+<td>50.1</td>
+<td>50.5</td>
+<td>47.0</td>
+<td>50.7</td>
+<td>47.8</td>
+<td>49.6</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Text model (deployed seed 0)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Epoch</th>
+<th><strong>1</strong></th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Train loss</td>
+<td><strong>1.64</strong></td>
+<td>1.31</td>
+<td>1.04</td>
+<td>0.80</td>
+<td>0.64</td>
+<td>0.54</td>
+</tr>
+<tr>
+<td>Dev wF1</td>
+<td><strong>50.3</strong></td>
+<td>49.5</td>
+<td>49.3</td>
+<td>48.6</td>
+<td>49.0</td>
+<td>48.4</td>
+</tr>
+</tbody>
+</table>
+<p>In both models the training loss keeps falling, but the dev score peaks early and then drops. <strong>That is overfitting.</strong> After the peak, the model is memorising the training set instead of learning patterns that carry over to new clips.</p>
+<h2>What it tells you</h2>
+<ol>
+<li><strong>Both models run out of useful data quickly.</strong> 10k clips is small, so training longer doesn't help.</li>
+<li><strong>The text model overfits faster, for two reasons.</strong>
+   - All 125 M of RoBERTa's parameters are being fine-tuned. It already understands language, so it learns the task almost immediately and then starts memorising. The sound head has only 0.27 M parameters on frozen features, so it takes longer to memorise.
+   - The text training set holds both the gold and the Whisper version of the same utterances. So one epoch already shows most utterances twice.</li>
+<li><strong>Picking the best checkpoint mattered.</strong> It saved about 3.5 points on sound (53.1 vs 49.6 at the last epoch) and about 2 on text (50.3 vs 48.4).
+   - Sound used early stopping with patience 6. It stopped at epoch 10 and restored the epoch-4 weights.
+   - Text ran all 6 epochs and kept the best one, which was epoch 1.</li>
+<li><strong>The learning-rate schedules hardly mattered.</strong>
+   - The sound head stopped so early that cosine decay had barely started: the learning rate was still about 0.87e-3.
+   - The text model's best checkpoint came at step 525, just after the 315-step warm-up ended.</li>
+</ol>
+<h2>Why select the text model on Whisper transcripts, not gold</h2>
+<ul>
+<li><strong>Select on the condition you deploy in.</strong> In the app, the text model never sees clean subtitles. It reads Whisper's transcripts, which have 26% WER on dev and 33% on test.</li>
+<li>Gold dev text would reward a model that is good at clean, subtitle-style sentences. That isn't the input it will get, and it could pick a different epoch.</li>
+<li>Noisy dev text also shows overfitting to clean training text earlier.</li>
+</ul>
+<h2>Likely follow-ups</h2>
+<ul>
+<li><strong>"Why train for 6 epochs if epoch 1 is best?"</strong> The recipe was fixed in the spec before training, using standard fine-tuning settings, and saving the best checkpoint protected against it. With hindsight, 2–3 epochs would have been enough and cheaper.</li>
+<li><strong>"Why no validation loss?"</strong> Selection used dev wF1 directly, because that is the reported metric. Weighted loss and wF1 can disagree, so choosing on loss could pick a worse model by the metric that matters.</li>
+</ul>
+<h2>A tighter version to say aloud</h2>
+<blockquote>
+<p>"Both models overfit early. Training loss keeps falling while dev wF1 peaks and then drops: epoch 4 for the sound head, epoch 1 for the text model. Text overfits faster because all of RoBERTa's 125 M parameters are fine-tuned. It already understands language, so it learns the task in one epoch and then memorises. The sound head is only 0.27 M parameters on frozen features. Keeping the best checkpoint saved 2 to 3.5 points. I selected the text model on Whisper transcripts because that is what it reads in deployment. Choosing on clean gold text would optimise for an input it never sees."</p>
+</blockquote>
+<p>Ready for Q7, the ChatGPT question?</p></div></div></details></section><section class="turn" id="t8"><h2 class="tn">Turn 8</h2><div class="me"><p>I agree that Gemini is more accurate on clear, acted speech. Ours runs offline and privately, about 9× faster (1.7 s vs 15.5 s), free with no quota, and gives calibrated probabilities for all 7 emotions plus a flag when tone and words disagree (this comparison covers only 27 clips).</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><p><strong>Good. About 8/10.</strong> The structure is right: concede, then list what your system does that the chatbot doesn't, then state the limit. The gap is that half your advantages are <em>claims</em>. Your professor's test is "what can it do that ChatGPT can't", so each point should come with a measured number.</p>
+<p><strong>Add the numbers</strong>
+1. <strong>Name the gap.</strong> Say "85.2% against 55.6% on 27 clips", not just "more accurate". Saying the exact number yourself shows confidence.
+2. <strong>Calibrated probabilities:</strong> ECE 5.4 on the MELD test set. When the system says 70%, it is right about 70% of the time. The chatbot gives one word and no confidence.
+3. <strong>The flag works, and here is the proof:</strong> it fires on 13.5% of test clips. On those clips accuracy drops to 46%, against 60% on the rest. So it really marks the uncertain cases, and fusion still beats either branch on them.
+4. <strong>Quota:</strong> the free tier ran out after 20 clips a day. That is why there are 27 clips, not 28.</p>
+<p><strong>Two points you left out</strong>
+- <strong>Repeatable:</strong> the same clip always gets the same answer. That matters if results are logged or compared over time.
+- <strong>Timeline:</strong> a long recording is split into segments, each with its own emotion reading. A chatbot gives one label for the whole file.</p>
+<p><strong>Finish with who would use it.</strong> Use cases where:
+- audio can't leave the device;
+- clips arrive in bulk, so speed and no quota matter;
+- you need probabilities or a timeline, not a single word.</p>
+<p>Don't claim clinical use. Your own report says it is not a clinical tool.</p>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"On my 27 acted clips Gemini was clearly more accurate: 85% against 56%. I report that openly. But it does a different job. Mine runs offline in 1.7 seconds against 15.5, so it's nine times faster, the audio never leaves the machine, and there's no quota. The free Gemini tier stopped after 20 clips. It gives calibrated probabilities for all seven emotions, with ECE 5.4, instead of one word. It shows separate tone and word readings with a disagreement flag. The flag fires on 13.5% of clips, and accuracy there is 46% versus 60% elsewhere, so it really marks the hard cases. It's also repeatable and gives a timeline for long recordings. So it suits private, high-volume or real-time use, where a chatbot can't be used."</p>
+</blockquote>
+<p>Last one: Q8, what you'd change with two more weeks. Want to try it?</p></div></div></details></section><section class="turn" id="t9"><h2 class="tn">Turn 9</h2><div class="me"><p>Better speech recognition would make the accuracies much better. Text on gold transcripts scores 61.5 against 52.3 on Whisper&#x27;s, and the fused system with gold text reaches 62.3 against 55.5 now, so there are up to about 7 points to gain, as long as a bigger ASR model still fits the latency budget of the 2 s.</p></div><details><summary>Claude's response</summary><div class="resp"><div class="say"><p><strong>Good. About 7.5/10.</strong> You named one lever, backed it with the right numbers (61.5 vs 52.3, and 62.3 vs 55.5), called 7 points an upper bound, and raised latency yourself. Three points would make it much stronger.</p>
+<p><strong>1. The latency problem is bigger than "as long as it fits"</strong>
+- The Whisper encoder already takes 1.23 s of the 1.65 s total. That leaves only about 0.35 s of headroom under the 2 s target.
+- A bigger Whisper means a bigger encoder, which almost certainly breaks the budget on this CPU.
+- Distil-Whisper doesn't solve it. It shrinks the <em>decoder</em>, but your bottleneck is the <em>encoder</em>.</p>
+<p><strong>2. Changing the ASR model also breaks the sound branch</strong> (the sharpest point)
+- The sound head was trained on <code>small.en</code>'s encoder features. A new ASR model means retraining the sound head on the new features.
+- The alternative is keeping <code>small.en</code> for sound and adding a second ASR model. That doubles the cost and gives up the one-pass design.</p>
+<p><strong>3. The 7 points is a ceiling you can't fully reach</strong>
+- Of the 7,761 test errors, 4,029 are <em>insertions</em>.
+- MELD's references are subtitles that drop fillers, laughter and other speakers' lines. Part of the 33% WER is a style mismatch, not real recognition errors. No ASR model will close that part.</p>
+<p><strong>Mention the alternative</strong>
+- On your own phone recordings the sound branch scores only 28.6%.
+- <strong>Recording-condition augmentation</strong> (phone-mic simulation, room reverberation, noise) targets that directly.
+- It adds <strong>zero latency</strong>, because it changes training only, and it fits in two weeks.
+- So you can answer: "for MELD-like audio, ASR is the biggest lever; for real users on phones, augmentation is the fastest win."</p>
+<p><strong>A tighter version to say aloud</strong></p>
+<blockquote>
+<p>"The biggest lever on the numbers is speech recognition. Text drops from 61.5 on gold transcripts to 52.3 on Whisper's, and fused with gold text would reach 62.3 against 55.5 today. That 7 points is a ceiling, though. Over half the WER is insertions against subtitle-style references, which no ASR model fixes. And a bigger Whisper means a bigger encoder, which is already 1.2 of my 1.65 seconds, and I'd have to retrain the sound head on its features. So with two weeks I'd do recording-condition augmentation for the sound head first. It costs no latency and targets the 28.6% on phone recordings, which is the weakness real users would hit. Then I'd test a better ASR model under the 2-second budget."</p>
+</blockquote>
+<hr />
+<p><strong>Overall</strong></p>
+<table>
+<thead>
+<tr>
+<th>Q</th>
+<th>Topic</th>
+<th>Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Pipeline walk-through</td>
+<td>didn't know, explained</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Freezing Whisper</td>
+<td>7</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Fair comparison</td>
+<td>6</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Fusion-weight leakage</td>
+<td>3</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Metrics and imbalance</td>
+<td>8.5</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Training curves</td>
+<td>didn't know, explained</td>
+</tr>
+<tr>
+<td>7</td>
+<td>vs Gemini</td>
+<td>8</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Next step</td>
+<td>7.5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Two habits to fix</strong>
+1. <strong>Lead with your strengths, then concede.</strong> In Q3 and Q4 you opened with the weakness.
+2. <strong>Back every claim with a number.</strong></p>
+<p>Do you want me to ask Q1, Q4 and Q6 again, reworded, to see if they've stuck?</p></div></div></details></section>
+</div></body></html>
